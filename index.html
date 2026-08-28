@@ -46,7 +46,11 @@
     font-family:"IBM Plex Sans TC","Microsoft JhengHei",system-ui,-apple-system,sans-serif;
     line-height:1.65;-webkit-font-smoothing:antialiased}
   .mono,code{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
-  .wrap{max-width:1120px;margin:0 auto;padding:24px 18px 56px;display:flex;flex-direction:column;gap:22px}
+  /* 字級用 zoom 而不是改 font-size：zoom 會讓內容以「較窄的 CSS 像素框」重新排版
+     再整體放大，圖表與間距一起等比縮放，也不會在手機上撐出橫向捲軸。 */
+  .wrap{max-width:1120px;margin:0 auto;padding:24px 18px 56px;display:flex;flex-direction:column;gap:22px;
+    zoom:var(--zoom,1)}
+  .sheet{zoom:var(--zoom,1)}
 
   /* header */
   header{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
@@ -175,19 +179,18 @@
   .rsum b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
   .rsum .miss{color:var(--warn)}
 
-  /* links */
-  .links{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(238px,100%),1fr));gap:11px}
-  .linkcard{display:flex;align-items:center;gap:12px;background:var(--surface);
-    border:1px solid var(--hair);border-radius:11px;padding:13px 15px;
-    box-shadow:var(--shadow);text-decoration:none;color:inherit;min-width:0}
-  .linkcard:hover{border-color:var(--s1)}
-  .linkcard .ic{width:34px;height:34px;flex:none;border-radius:9px;display:grid;place-items:center}
-  .linkcard .ic svg{width:19px;height:19px;display:block}
-  .linkcard .tx{display:flex;flex-direction:column;gap:0;min-width:0}
-  .linkcard .nm{font-size:14.5px;font-weight:600;display:flex;align-items:center;gap:5px}
-  .linkcard .nm .ar{color:var(--muted);font-size:12px;font-weight:400}
+  /* links —— 放在最上面當導覽列，所以做成精簡的膠囊而不是卡片 */
+  .links{display:flex;flex-wrap:wrap;gap:7px;margin-top:-6px}
+  .linkcard{display:inline-flex;align-items:center;gap:7px;background:var(--surface);
+    border:1px solid var(--hair);border-radius:999px;padding:4px 12px 4px 5px;
+    text-decoration:none;color:var(--ink-2);min-width:0}
+  .linkcard:hover{border-color:var(--s1);color:var(--ink)}
+  .linkcard .ic{width:22px;height:22px;flex:none;border-radius:50%;display:grid;place-items:center}
+  .linkcard .ic svg{width:13px;height:13px;display:block}
+  .linkcard .nm{font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:4px;
+    white-space:nowrap}
+  .linkcard .nm .ar{color:var(--muted);font-size:10.5px;font-weight:400}
   .linkcard:hover .nm .ar{color:var(--s1)}
-  .linkcard .ds{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* map */
   .mapcard{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:0;
@@ -255,15 +258,18 @@
     <img class="logo" src="logo.png" width="384" height="384"
          alt="車城國小南十字天文台識別標誌：南十字五星、P38 圓頂、車城國小紀念碑與落山風飄帶">
     <div class="brand">
-      <div class="eyebrow">AMS338 · IAU P38 · 22.07°N 120.72°E</div>
+      <div class="eyebrow">CRUX OBSERVATORY · IAU P38 · 22.07°N 120.72°E</div>
       <h1>車城國小 南十字天文台 氣象站</h1>
     </div>
     <div class="hdr-right">
       <span class="pill" id="status"><span class="dot"></span><span id="statusText">載入中…</span></span>
       <span class="pill" id="countdown" title="距離本頁下次自動重新取得資料">下次更新 —</span>
+      <button class="tbtn" id="fontBtn" type="button" title="調整字體大小">字級：標準</button>
       <button class="tbtn" id="themeBtn" type="button" title="切換淺色／深色">主題：自動</button>
     </div>
   </header>
+
+  <nav class="links" id="links" aria-label="相關連結" hidden></nav>
 
   <div class="banner" id="banner"></div>
 
@@ -366,11 +372,6 @@
     </div>
   </div>
 
-  <div class="sec-wrap" id="linksSec" hidden>
-    <h2 class="sec">相關連結</h2>
-    <div class="links" id="links"></div>
-  </div>
-
   <details>
     <summary>資料表 · 每日明細</summary>
     <div class="tw"><table id="dayTable"><thead><tr>
@@ -401,13 +402,13 @@
   </div>
 
   <footer>
-    <div><b>車城國小 南十字天文台</b>（Checheng Station · AMS338 · IAU P38）·
+    <div><b>車城國小 南十字天文台</b>（Checheng Elementary School Crux Observatory · IAU P38）·
       Davis Vantage Pro2 Plus · 22.0747°N 120.7152°E 海拔 20 m</div>
     <ul>
       <li id="fUpdate">資料更新中…</li>
       <li>觀測每 5 分鐘記錄一筆；本頁即時數值每 10 分鐘更新，曲線每小時更新。</li>
       <li><b>雨量計解析度 0.2 mm</b>：毛毛雨小於一格不會計數，所以現場在飄雨、數字仍是 0 是正常的，不是故障。</li>
-      <li>本頁資料由 AllSky7 流星監測站的氣象子系統自動發布，開放自由取用。
+      <li>本站是南十字天文台自行架設維運的氣象站，資料自動發布、開放自由取用。
         原始資料：<a href="https://github.com/cces026/cces-crux-weather/tree/data" target="_blank" rel="noopener">GitHub</a></li>
     </ul>
   </footer>
@@ -433,6 +434,21 @@ function applyTheme(){
 }
 document.getElementById("themeBtn").addEventListener("click",function(){mi=(mi+1)%3;applyTheme();});
 applyTheme();
+
+/* ---------- 字級 ---------- */
+var FONTS=[["0.9","小"],["1","標準"],["1.15","大"],["1.3","特大"]],fi=1;
+try{var fv=localStorage.getItem("wxFont");
+  FONTS.forEach(function(f,i){if(f[0]===fv)fi=i;});}catch(e){}
+function applyFont(){
+  var f=FONTS[fi];
+  document.documentElement.style.setProperty("--zoom",f[0]);
+  document.getElementById("fontBtn").textContent="字級："+f[1];
+  try{localStorage.setItem("wxFont",f[0]);}catch(e){}
+  if(RECENT)drawAll();
+}
+document.getElementById("fontBtn").addEventListener("click",function(){
+  fi=(fi+1)%FONTS.length;applyFont();});
+applyFont();
 
 /* ---------- helpers ---------- */
 function n1(v){return (v===null||v===undefined||isNaN(v))?null:Math.round(v*10)/10;}
@@ -1290,19 +1306,18 @@ function renderLinks(d){
     var st=LINK_STYLE[it.kind]||LINK_STYLE.link;
     var a=document.createElement("a");
     a.className="linkcard";a.href=u;a.target="_blank";a.rel="noopener noreferrer";
+    // 膠囊只放名稱，說明改掛 title（滑鼠停留看得到，螢幕閱讀器也讀得到）
+    if(it.desc)a.title=it.name?(it.name+"："+it.desc):it.desc;
     var ic=document.createElement("span");ic.className="ic";
     ic.style.background=st.bg;ic.style.color=st.fg;
     ic.appendChild(linkIcon(it.kind));a.appendChild(ic);
-    var tx=document.createElement("span");tx.className="tx";
     var nm=document.createElement("span");nm.className="nm";
     nm.appendChild(document.createTextNode(it.name||u));
     var ar=document.createElement("span");ar.className="ar";ar.textContent="↗";
-    nm.appendChild(ar);tx.appendChild(nm);
-    if(it.desc){var ds=document.createElement("span");ds.className="ds";
-      ds.textContent=it.desc;tx.appendChild(ds);}
-    a.appendChild(tx);host.appendChild(a);n++;
+    nm.appendChild(ar);a.appendChild(nm);
+    host.appendChild(a);n++;
   });
-  document.getElementById("linksSec").hidden=(n===0);
+  host.hidden=(n===0);
 }
 
 /* ---------- load ---------- */
