@@ -85,7 +85,12 @@
   .sec-wrap{display:flex;flex-direction:column;gap:11px}
   .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(146px,100%),1fr));gap:11px}
   .tile{background:var(--surface);border:1px solid var(--hair);border-radius:11px;padding:12px 14px;
-    display:flex;flex-direction:column;gap:1px;box-shadow:var(--shadow);min-width:0}
+    display:flex;flex-direction:column;gap:1px;box-shadow:var(--shadow);min-width:0;
+    position:relative;text-align:left;font:inherit;color:inherit;cursor:pointer}
+  .tile::after{content:"›";position:absolute;right:11px;top:9px;color:var(--muted);
+    font-size:15px;line-height:1;opacity:.55}
+  .tile:hover{border-color:var(--s1)}
+  .tile:hover::after{opacity:1;color:var(--s1)}
   .tile .k{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:5px}
   .tile .v{font-size:23px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.3}
   .tile .v small{font-size:12px;font-weight:500;color:var(--ink-2);margin-left:2px}
@@ -135,6 +140,35 @@
   th:first-child,td:first-child{text-align:left}
   tbody tr:last-child td{border-bottom:none}
 
+  /* detail overlay */
+  .ov{position:fixed;inset:0;background:rgba(8,12,17,.55);display:none;z-index:50;
+    padding:20px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .ov.open{display:block}
+  .sheet{max-width:840px;margin:0 auto;background:var(--ground);border:1px solid var(--hair);
+    border-radius:15px;box-shadow:0 18px 60px rgba(0,0,0,.35);padding:20px 22px 24px;
+    display:flex;flex-direction:column;gap:15px}
+  .sh-top{display:flex;align-items:flex-start;gap:12px}
+  .sh-top h2{margin:0;font-size:20px;font-weight:700}
+  .sh-now{font-size:31px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+  .sh-now small{font-size:14px;font-weight:500;color:var(--ink-2);margin-left:2px}
+  .xbtn{margin-left:auto;font:inherit;font-size:20px;line-height:1;cursor:pointer;
+    background:var(--surface);border:1px solid var(--hair);color:var(--ink-2);
+    width:34px;height:34px;border-radius:9px;flex:none}
+  .xbtn:hover{border-color:var(--hair-2);color:var(--ink)}
+  .sh-note{background:var(--surface);border:1px solid var(--hair);border-radius:11px;
+    padding:13px 16px;display:flex;flex-direction:column;gap:7px;font-size:14px}
+  .sh-note dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
+  .sh-note dt{font-size:12px;color:var(--muted);white-space:nowrap}
+  .sh-note dd{margin:0;color:var(--ink-2)}
+  .sh-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(108px,100%),1fr));gap:9px}
+  .sh-stat{background:var(--surface);border:1px solid var(--hair);border-radius:10px;padding:9px 12px}
+  .sh-stat .k{font-size:11.5px;color:var(--muted)}
+  .sh-stat .v{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+  .sh-stat .v small{font-size:11.5px;font-weight:500;color:var(--ink-2);margin-left:2px}
+  .nodata{background:var(--surface);border:1px solid var(--hair);border-radius:11px;
+    padding:13px 16px;font-size:13.5px;color:var(--ink-2)}
+  body.locked{overflow:hidden}
+
   footer{border-top:1px solid var(--hair);padding-top:15px;font-size:12px;color:var(--muted);
     display:flex;flex-direction:column;gap:5px}
   footer a{color:var(--s1)}
@@ -158,6 +192,7 @@
     </div>
     <div class="hdr-right">
       <span class="pill" id="status"><span class="dot"></span><span id="statusText">載入中…</span></span>
+      <span class="pill" id="countdown" title="距離本頁下次自動重新取得資料">下次更新 —</span>
       <button class="tbtn" id="themeBtn" type="button" title="切換淺色／深色">主題：自動</button>
     </div>
   </header>
@@ -174,7 +209,7 @@
   </section>
 
   <div class="sec-wrap">
-    <h2 class="sec">目前觀測 · 全要素</h2>
+    <h2 class="sec">目前觀測 · 全要素<span style="font-weight:400;color:var(--muted)"> — 點任一項看歷史與說明</span></h2>
     <div class="tiles" id="tiles"></div>
   </div>
 
@@ -235,6 +270,26 @@
     </tr></thead><tbody></tbody></table></div>
   </details>
 
+  <div class="ov" id="ov" role="dialog" aria-modal="true" aria-labelledby="shTitle">
+    <div class="sheet" id="sheet">
+      <div class="sh-top">
+        <div>
+          <h2 id="shTitle">—</h2>
+          <div class="sh-now" id="shNow">—</div>
+        </div>
+        <button class="xbtn" id="shClose" type="button" aria-label="關閉">×</button>
+      </div>
+      <div class="sh-note">
+        <dl>
+          <dt>這是什麼</dt><dd id="shWhat">—</dd>
+          <dt>資料來源</dt><dd id="shFrom">—</dd>
+        </dl>
+      </div>
+      <div class="sh-stats" id="shStats"></div>
+      <div id="shCharts" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+  </div>
+
   <footer>
     <div><b>車城國小 南十字天文台</b>（Checheng Station · AMS338 · IAU P38）·
       Davis Vantage Pro2 Plus · 22.0747°N 120.7152°E 海拔 20 m</div>
@@ -292,7 +347,7 @@ function niceMax(v,floor){
 function lineChart(host,rows,series,opt){
   opt=opt||{};
   host.textContent="";
-  var card=host.closest(".card"),tip=card.querySelector(".tip");
+  var card=host.closest(".card,.cbox"),tip=card.querySelector(".tip");
   var W=760,H=opt.h||200,M={t:12,r:12,b:22,l:44};
   var iw=W-M.l-M.r,ih=H-M.t-M.b;
   var svg=el("svg",{viewBox:"0 0 "+W+" "+H,preserveAspectRatio:"none",role:"img"});
@@ -396,7 +451,7 @@ function lineChart(host,rows,series,opt){
 function barChart(host,items,opt){
   opt=opt||{};
   host.textContent="";
-  var card=host.closest(".card"),tip=card.querySelector(".tip");
+  var card=host.closest(".card,.cbox"),tip=card.querySelector(".tip");
   var W=760,H=opt.h||200,M={t:12,r:12,b:22,l:44};
   var iw=W-M.l-M.r,ih=H-M.t-M.b;
   var svg=el("svg",{viewBox:"0 0 "+W+" "+H,preserveAspectRatio:"none",role:"img"});
@@ -499,14 +554,107 @@ function drawCompass(deg,rose){
 }
 
 /* ---------- render ---------- */
-function tile(k,v,unit,sub,warn){
-  var d=document.createElement("div");d.className="tile"+(warn?" warnable on":"");
-  var kk=document.createElement("div");kk.className="k";kk.textContent=k;d.appendChild(kk);
-  var vv=document.createElement("div");vv.className="v";vv.textContent=v;
-  if(unit){var s=document.createElement("small");s.textContent=unit;vv.appendChild(s);}
-  d.appendChild(vv);
-  if(sub){var ss=document.createElement("div");ss.className="s";ss.textContent=sub;d.appendChild(ss);}
-  return d;
+/* ---------- 要素定義 ----------
+   rf   = recent.json 的欄位名（有才畫得出 48 小時曲線）
+   daily= daily.json 的欄位對應（有才畫得出每日歷史）
+   兩者皆無的項目，說明欄會誠實說「沒有留歷史」並解釋原因。        */
+var META=[
+ {k:"temp",name:"氣溫",unit:"°C",dec:1,rf:"temp",daily:{min:"t_min",max:"t_max",avg:"t_avg"},
+  val:function(d){return d.temp_c;},
+  what:"感測器實測的空氣溫度，也就是一般講的「幾度」。",
+  from:"ISS 室外組的溫度感測器，裝在百葉罩內避免曬到太陽，無線傳回主機。"},
+ {k:"dew",name:"露點",unit:"°C",dec:1,rf:"dew",
+  val:function(d){return d.dew_point_c;},
+  what:"空氣冷到這個溫度時，水氣就會開始凝結成露水或霧。露點越接近氣溫，代表空氣越潮濕、越悶。",
+  from:"主機用氣溫與相對濕度換算。"},
+ {k:"rh",name:"相對濕度",unit:"%",dec:0,rf:"rh",daily:{avg:"rh_avg"},
+  val:function(d){return d.humidity_pct;},
+  what:"空氣裡的水氣，佔「這個溫度下最多能容納的量」的百分比。100% 就是飽和。",
+  from:"ISS 室外組的濕度感測器。"},
+ {k:"feel",name:"體感溫度",unit:"°C",dec:1,
+  val:function(d){return (d.thsw_index_c!==null&&d.thsw_index_c!==undefined)?d.thsw_index_c:d.heat_index_c;},
+  what:"THSW 指數：把溫度、濕度、日照、風四項一起算進去的人體感受溫度。大太陽底下會比氣溫高十幾度，那是正常的——曬太陽本來就比站在陰影下熱。",
+  from:"主機依 Davis 的 THSW 公式即時計算。",
+  nohist:"這個項目是主機當場算出來的，沒有寫進歷史檔，所以查不到過去的值。要補的話得改動氣象站的錄製程式，那支程式是整條資料鏈的核心，不宜為了這個去動它。"},
+ {k:"pres",name:"氣壓",unit:"hPa",dec:1,rf:"pres",daily:{min:"p_min",max:"p_max"},
+  val:function(d){return d.pressure_hpa;},
+  what:"換算到海平面高度的大氣壓力。氣壓快速下降常常是天氣要變壞的前兆，颱風接近時會掉得很明顯。",
+  from:"主機內建氣壓計，已依本站海拔 20 公尺做校正。"},
+ {k:"wind",name:"風速",unit:"m/s",dec:1,rf:"wind",
+  val:function(d){return d.wind_speed_ms;},
+  what:"目前的風速，單位是公尺／秒。換算成常聽到的蒲福風級：約 5.5 m/s 是 4 級（樹葉搖動），10.8 m/s 以上是 6 級（撐傘困難）。",
+  from:"ISS 室外組的風杯式風速計，風杯轉得越快風速越大。"},
+ {k:"gust",name:"陣風",unit:"m/s",dec:1,rf:"gust",daily:{max:"gust_max"},
+  val:function(d){return d.wind_gust_ms;},
+  what:"這段時間內測到的最大瞬間風速。判斷會不會吹倒東西要看陣風，不是看平均風速。",
+  from:"ISS 室外組的風速計，取區間最大值。"},
+ {k:"avg10",name:"10 分鐘平均風",unit:"m/s",dec:1,
+  val:function(d){return d.wind_avg10_ms;},
+  what:"過去十分鐘的平均風速。氣象觀測講「風力幾級」通常是用這種平均值，比瞬間值穩定。",
+  from:"主機自行累計。",
+  nohist:"主機只提供當下這個十分鐘的平均值，沒有寫進歷史檔。想看長期趨勢請改看「風速」。"},
+ {k:"dir",name:"風向",unit:"",dec:0,rf:"dir",text:true,
+  val:function(d){return d.wind_dir_deg;},
+  what:"風「從哪裡吹來」的方位。0° 是北、90° 是東、180° 是南、270° 是西。",
+  from:"ISS 室外組的風向標。"},
+ {k:"rain",name:"今日累積雨量",unit:"mm",dec:1,daily:{v:"rain"},
+  val:function(d){return d.rain_mm;},
+  what:"台灣時間當天零點到現在累積的雨量。每天午夜自動歸零。",
+  from:"翻斗式雨量計：小杯子接滿 0.2 mm 就翻倒一次並計數。",
+  note:"因為一格是 0.2 mm，毛毛雨小於一格不會被計到——現場在飄雨、數字卻沒動，是正常的。"},
+ {k:"rate",name:"目前時雨率",unit:"mm/hr",dec:1,rf:"rate",daily:{v:"rain_peak"},
+  val:function(d){return d.rain_rate_mmhr;},
+  what:"依照現在這一刻的雨勢，換算「如果這樣下滿一小時會累積多少」。所以短暫的大雨會出現很高的數字，但不代表真的會下那麼多。",
+  from:"主機依翻斗翻倒的頻率即時換算。"},
+ {k:"solar",name:"日照強度",unit:"W/m²",dec:0,rf:"solar",daily:{max:"solar_max"},
+  val:function(d){return d.solar_wm2;},
+  what:"每平方公尺地面接收到的太陽輻射功率。晴朗的正午在台灣大約 800～1000，陰天剩下一兩百，夜間為 0。",
+  from:"ISS 室外組的日射計。"},
+ {k:"uv",name:"紫外線指數",unit:"",dec:1,rf:"uv",
+  val:function(d){return d.uv_index;},
+  what:"紫外線強度分級。3 以下低、3–6 中等、6–8 高、8–11 很高、11 以上極高。高的時候要防曬。",
+  from:"ISS 室外組的紫外線感測器。"},
+ {k:"chill",name:"風寒溫度",unit:"°C",dec:1,
+  val:function(d){return d.wind_chill_c;},
+  what:"寒冷時，風把體表熱量帶走造成的「感覺更冷」溫度。",
+  from:"主機依 Davis 公式計算。",
+  note:"風寒只在低溫（大約 10°C 以下）才有物理意義。車城幾乎不會這麼冷，所以這個值長年等於氣溫——不是壞掉，是這個指標在亞熱帶用不上。",
+  nohist:"沒有寫進歷史檔。反正在本站它等於氣溫，要看歷史請改看「氣溫」。"},
+ {k:"itemp",name:"室內溫度",unit:"°C",dec:1,
+  val:function(d){return d.indoor_temp_c;},
+  what:"天文台室內的溫度。",
+  from:"Davis console 主機「本身內建」的感測器——不是室外那組。console 放在天文台室內、用 USB 線接到直播電腦，所以量到的是它所在那個房間。",
+  nohist:"沒有寫進歷史檔。這個值反映的是室內環境而不是天氣，對觀測沒有直接用途，當初就沒收。"},
+ {k:"ihum",name:"室內濕度",unit:"%",dec:0,
+  val:function(d){return d.indoor_hum_pct;},
+  what:"天文台室內的相對濕度。太高的話電子設備容易受潮，這也是它值得留意的原因。",
+  from:"Davis console 主機本身內建的感測器，與室內溫度同一顆。",
+  nohist:"沒有寫進歷史檔，原因同室內溫度。"}
+];
+var METAK={};META.forEach(function(m){METAK[m.k]=m;});
+
+function tile(m,d,warn){
+  var b=document.createElement("button");
+  b.type="button";b.className="tile"+(warn?" warnable on":"");
+  b.setAttribute("data-k",m.k);
+  var v=m.val(d);
+  var kk=document.createElement("div");kk.className="k";kk.textContent=m.name;b.appendChild(kk);
+  var vv=document.createElement("div");vv.className="v";
+  vv.textContent=(m.k==="dir")?(d.wind_dir_text||"—"):fmt(v,m.dec);
+  if(m.unit){var s=document.createElement("small");s.textContent=m.unit;vv.appendChild(s);}
+  b.appendChild(vv);
+  var sub=null;
+  if(m.k==="dir")sub=(v===null||v===undefined)?null:v+"°";
+  else if(m.k==="uv")sub=uvWord(v);
+  else if(m.k==="rate")sub=(v>0?"正在下雨":"沒有降雨");
+  else if(m.k==="itemp"||m.k==="ihum")sub="主機內建感測器";
+  else if(m.k==="chill")sub="低溫時才有意義";
+  else if(m.k==="feel")sub="含日照與風";
+  else if(m.k==="rain")sub="台灣時間當日";
+  if(warn)sub="訊號可疑";
+  if(sub){var ss=document.createElement("div");ss.className="s";ss.textContent=sub;b.appendChild(ss);}
+  b.addEventListener("click",function(){openDetail(m.k);});
+  return b;
 }
 
 function renderLatest(){
@@ -553,24 +701,11 @@ function renderLatest(){
 
   var t=document.getElementById("tiles");t.textContent="";
   var ws=d.wind_sensor_suspect;
-  [
-    ["氣溫",fmt(d.temp_c,1),"°C",null,false],
-    ["露點",fmt(d.dew_point_c,1),"°C","空氣飽和的溫度",false],
-    ["相對濕度",fmt(d.humidity_pct,0),"%",null,false],
-    ["體感溫度",fmt(feel,1),"°C",useThsw?"THSW：把日照與風算進去，大太陽下會明顯高於氣溫":"熱指數（溫濕度）",false],
-    ["氣壓",fmt(d.pressure_hpa,1),"hPa",null,false],
-    ["風速",fmt(d.wind_speed_ms,1),"m/s",ws?"訊號可疑":null,ws],
-    ["陣風",fmt(d.wind_gust_ms,1),"m/s",ws?"訊號可疑":null,ws],
-    ["10 分鐘平均風",fmt(d.wind_avg10_ms,1),"m/s",null,ws],
-    ["風向",d.wind_dir_text||"—","",d.wind_dir_deg!==null&&d.wind_dir_deg!==undefined?d.wind_dir_deg+"°":null,false],
-    ["今日累積雨量",fmt(d.rain_mm,1),"mm","台灣時間當日",false],
-    ["目前時雨率",fmt(d.rain_rate_mmhr,1),"mm/hr",d.rain_rate_mmhr>0?"正在下雨":"沒有降雨",false],
-    ["日照強度",fmt(d.solar_wm2,0),"W/m²",null,false],
-    ["紫外線指數",fmt(d.uv_index,1),"",uvWord(d.uv_index),false],
-    ["風寒溫度",fmt(d.wind_chill_c,1),"°C",null,false],
-    ["室內溫度",fmt(d.indoor_temp_c,1),"°C","機房",false],
-    ["室內濕度",fmt(d.indoor_hum_pct,0),"%","機房",false]
-  ].forEach(function(a){t.appendChild(tile(a[0],a[1],a[2],a[3],a[4]));});
+  META.forEach(function(m){
+    var warn=ws&&(m.k==="wind"||m.k==="gust"||m.k==="avg10");
+    t.appendChild(tile(m,d,warn));
+  });
+  if(document.getElementById("ov").classList.contains("open"))openDetail(CURKEY,true);
 
   document.getElementById("wdText").textContent=d.wind_dir_text||"—";
   document.getElementById("wdDeg").textContent=(d.wind_dir_deg!==null&&d.wind_dir_deg!==undefined)?d.wind_dir_deg+"°":"—";
@@ -666,6 +801,139 @@ function drawAll(){
   }
 }
 
+/* ---------- detail sheet ---------- */
+var CURKEY=null,LASTFOCUS=null;
+function chartBox(title,sub){
+  var b=document.createElement("div");b.className="card cbox";
+  var h=document.createElement("h3");h.textContent=title;b.appendChild(h);
+  if(sub){var p=document.createElement("p");p.className="cs";p.textContent=sub;b.appendChild(p);}
+  var host=document.createElement("div");b.appendChild(host);
+  var tip=document.createElement("div");tip.className="tip";b.appendChild(tip);
+  return {box:b,host:host};
+}
+function statBox(k,v,unit){
+  var d=document.createElement("div");d.className="sh-stat";
+  var kk=document.createElement("div");kk.className="k";kk.textContent=k;d.appendChild(kk);
+  var vv=document.createElement("div");vv.className="v";vv.textContent=v;
+  if(unit){var s=document.createElement("small");s.textContent=unit;vv.appendChild(s);}
+  d.appendChild(vv);return d;
+}
+function openDetail(k,keepScroll){
+  var m=METAK[k];if(!m||!LATEST)return;
+  CURKEY=k;
+  if(!keepScroll)LASTFOCUS=document.activeElement;
+  document.getElementById("shTitle").textContent=m.name;
+  var cur=m.val(LATEST);
+  var nowEl=document.getElementById("shNow");nowEl.textContent="";
+  nowEl.appendChild(document.createTextNode(k==="dir"?(LATEST.wind_dir_text||"—")+"　":fmt(cur,m.dec)));
+  if(m.unit||k==="dir"){var u=document.createElement("small");
+    u.textContent=k==="dir"?((cur===null||cur===undefined)?"":cur+"°"):m.unit;nowEl.appendChild(u);}
+  document.getElementById("shWhat").textContent=m.what+(m.note?"　"+m.note:"");
+  document.getElementById("shFrom").textContent=m.from;
+
+  var stats=document.getElementById("shStats");stats.textContent="";
+  var charts=document.getElementById("shCharts");charts.textContent="";
+
+  var idx=null,vals=null;
+  if(RECENT&&RECENT.rows&&m.rf){
+    idx={};RECENT.fields.forEach(function(f,i){idx[f]=i;});
+    if(m.rf in idx){
+      vals=RECENT.rows.map(function(r){var v=r[idx[m.rf]];return (v===null||v===undefined)?null:v;});
+      var ok=vals.filter(function(v){return v!==null;});
+      if(ok.length){
+        var mx=Math.max.apply(null,ok),mn=Math.min.apply(null,ok);
+        var av=ok.reduce(function(a,b){return a+b;},0)/ok.length;
+        var mxi=vals.indexOf(mx),mni=vals.indexOf(mn);
+        stats.appendChild(statBox("48 小時最高",fmt(mx,m.dec),m.unit));
+        stats.appendChild(statBox("出現時間",mdhm(RECENT.rows[mxi][idx.t]),""));
+        stats.appendChild(statBox("48 小時最低",fmt(mn,m.dec),m.unit));
+        stats.appendChild(statBox("48 小時平均",fmt(av,m.dec),m.unit));
+      }
+    }
+  }
+
+  if(vals){
+    var cb=chartBox("近 48 小時",m.unit?("單位："+m.unit):"");
+    charts.appendChild(cb.box);
+    var rows=RECENT.rows.map(function(r,i){return {x:r[idx.t],vals:[vals[i]]};});
+    lineChart(cb.host,rows,[{color:css("--s1"),label:m.name}],
+      {unit:m.unit,dec:m.dec,area:true,zero:(k==="rate"||k==="solar"||k==="uv"||k==="wind"||k==="gust"),
+       xfmt:function(s){return hhmm(s);},tipTitle:function(s){return mdhm(s);},
+       aria:m.name+" 近 48 小時"});
+  }
+
+  if(m.daily&&DAILY&&DAILY.days&&DAILY.days.length){
+    var days=DAILY.days.slice(-30),dd=m.daily;
+    // 沒有 48 小時逐筆的項目（例如雨量），統計就改由每日彙總來算，
+    // 免得詳細頁只有一張圖、上面空空的。
+    if(!stats.children.length){
+      var f0=dd.v||dd.max||dd.avg||dd.min;
+      var dv=days.map(function(e){return e[f0];}).filter(function(v){return v!==undefined&&v!==null;});
+      if(dv.length){
+        if(dd.v){
+          var sum=dv.reduce(function(a,b){return a+b;},0);
+          var wet=dv.filter(function(v){return v>=0.1;}).length;
+          stats.appendChild(statBox(days.length+" 天合計",fmt(sum,1),m.unit));
+          stats.appendChild(statBox("降雨日數",String(wet),"天"));
+        }
+        var big=Math.max.apply(null,dv);
+        var bigDay=days.filter(function(e){return e[f0]===big;})[0];
+        stats.appendChild(statBox(dd.v?"最大單日":(days.length+" 天最高"),fmt(big,m.dec),m.unit));
+        if(bigDay)stats.appendChild(statBox("出現日期",zhDate(bigDay.d),""));
+      }
+    }
+    var cb2=chartBox("每日歷史",
+      "最近 "+days.length+" 天（全站共 "+DAILY.days.length+" 天紀錄）");
+    charts.appendChild(cb2.box);
+    if(dd.min&&dd.max){
+      barChart(cb2.host,days.map(function(e){
+        return {v:e[dd.min],v2:e[dd.max],tick:(+e.d.split("-")[1])+"/"+(+e.d.split("-")[2]),
+          title:zhDateW(e.d),extra:dd.avg&&e[dd.avg]!==undefined?("平均 "+e[dd.avg]+m.unit):null,
+          aria:zhDate(e.d)+" 最低 "+fmt(e[dd.min],m.dec)+" 最高 "+fmt(e[dd.max],m.dec)};}),
+        {color:css("--s2"),unit:m.unit,range:true,h:200,aria:m.name+" 每日範圍"});
+    }else{
+      var f=dd.v||dd.max||dd.avg||dd.min;
+      barChart(cb2.host,days.map(function(e){
+        return {v:(e[f]===undefined?null:e[f]),tick:(+e.d.split("-")[1])+"/"+(+e.d.split("-")[2]),
+          title:zhDateW(e.d),aria:zhDate(e.d)+" "+fmt(e[f],m.dec)};}),
+        {color:css("--s1"),unit:m.unit,h:200,floor:1,aria:m.name+" 每日"});
+    }
+  }
+
+  if(!charts.children.length){
+    var nd=document.createElement("div");nd.className="nodata";
+    nd.textContent=m.nohist||"這個項目目前沒有歷史紀錄。";
+    charts.appendChild(nd);
+  }
+
+  var ov=document.getElementById("ov");
+  if(!keepScroll){
+    ov.classList.add("open");document.body.classList.add("locked");
+    ov.scrollTop=0;document.getElementById("shClose").focus();
+  }
+}
+function closeDetail(){
+  document.getElementById("ov").classList.remove("open");
+  document.body.classList.remove("locked");
+  CURKEY=null;
+  if(LASTFOCUS&&LASTFOCUS.focus)LASTFOCUS.focus();
+}
+document.getElementById("shClose").addEventListener("click",closeDetail);
+document.getElementById("ov").addEventListener("click",function(e){
+  if(e.target===this)closeDetail();});
+document.addEventListener("keydown",function(e){
+  if(e.key==="Escape"&&document.getElementById("ov").classList.contains("open"))closeDetail();});
+
+/* ---------- countdown ---------- */
+var NEXT=0;
+function setNext(ms){NEXT=Date.now()+ms;}
+setInterval(function(){
+  var el=document.getElementById("countdown");
+  if(!NEXT){el.textContent="下次更新 —";return;}
+  var s=Math.max(0,Math.round((NEXT-Date.now())/1000));
+  el.textContent=s>0?("下次更新 "+Math.floor(s/60)+":"+pad(s%60)):"更新中…";
+},1000);
+
 /* ---------- load ---------- */
 function get(name){
   return fetch(BASE+name+"?t="+Math.floor(Date.now()/60000),{cache:"no-store"})
@@ -686,8 +954,10 @@ function loadRest(){
     get("daily.json").then(function(d){DAILY=d;}).catch(function(){})
   ]).then(drawAll);
 }
-loadLatest().then(loadRest);
-setInterval(loadLatest,5*60*1000);
+var LATEST_MS=5*60*1000;
+function cycle(){setNext(LATEST_MS);return loadLatest();}
+cycle().then(loadRest);
+setInterval(cycle,LATEST_MS);
 setInterval(loadRest,30*60*1000);
 var rt;
 window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(drawAll,250);});
