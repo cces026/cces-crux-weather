@@ -410,6 +410,9 @@
       <li><b>雨量計解析度 0.2 mm</b>：毛毛雨小於一格不會計數，所以現場在飄雨、數字仍是 0 是正常的，不是故障。</li>
       <li>本站是南十字天文台自行架設維運的氣象站，資料自動發布、開放自由取用。
         原始資料：<a href="https://github.com/cces026/cces-crux-weather/tree/data" target="_blank" rel="noopener">GitHub</a></li>
+      <li>本頁使用 <a href="https://www.goatcounter.com/" target="_blank" rel="noopener">GoatCounter</a>
+        統計造訪次數：<b>不使用 cookie、不追蹤個人、不與其他網站串接</b>，
+        只記錄網址、來源、螢幕寬度與國家。</li>
     </ul>
   </footer>
 </div>
@@ -1360,5 +1363,10 @@ var rt;
 window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(drawAll,250);});
 })();
 </script>
+
+<!-- 造訪統計：GoatCounter。無 cookie、不蒐集個人資料，隱私說明寫在頁尾。
+     async 載入，擋掉或載入失敗都不影響頁面任何功能。 -->
+<script data-goatcounter="https://ccescrux.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>
