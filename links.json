@@ -1,0 +1,25 @@
+{
+  "_說明": "首頁「相關連結」區的內容。要新增/修改/刪除連結，直接改這個檔案就好——可以在 GitHub 網頁上編輯（main 分支 → links.json → 鉛筆圖示），存檔後幾分鐘內生效，不必動車城那台機器。陣列順序就是顯示順序。",
+  "_kind可用值": "youtube / facebook / school / link（決定圖示，不認得的一律當 link）",
+  "_中文網址注意": "網址若含中文，要用百分比編碼（percent-encoding），否則部分瀏覽器會連不上。",
+  "links": [
+    {
+      "kind": "youtube",
+      "name": "YouTube 頻道",
+      "desc": "全天相機直播與流星影片",
+      "url": "https://www.youtube.com/@%E8%BB%8A%E5%9F%8E%E5%9C%8B%E5%B0%8F%E5%8D%97%E5%8D%81%E5%AD%97%E5%A4%A9%E6%96%87%E5%8F%B0"
+    },
+    {
+      "kind": "facebook",
+      "name": "Facebook 粉絲專頁",
+      "desc": "天文台活動與觀測紀錄",
+      "url": "https://www.facebook.com/cces.observatory"
+    },
+    {
+      "kind": "school",
+      "name": "車城國小",
+      "desc": "屏東縣立車城國民小學 校網",
+      "url": "https://www.cces.ptc.edu.tw/nss/p/index"
+    }
+  ]
+}
