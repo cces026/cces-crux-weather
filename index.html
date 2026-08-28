@@ -783,7 +783,7 @@ var META=[
   what:"感測器實測的空氣溫度，也就是一般講的「幾度」。",
   use:"最基本的天氣指標。對天文台來說還有一個特別的用途：氣溫和露點的差距決定鏡頭會不會結露，差距越小越危險。",
   from:"ISS 室外組的溫度感測器，裝在百葉罩內避免曬到太陽，無線傳回主機。"},
- {k:"dew",name:"露點",unit:"°C",dec:1,rf:"dew",
+ {k:"dew",name:"露點",unit:"°C",dec:1,rf:"dew",daily:{min:"d_min",max:"d_max",avg:"d_avg"},
   val:function(d){return d.dew_point_c;},
   what:"空氣冷到這個溫度時，水氣就會開始凝結成露水或霧。露點越接近氣溫，代表空氣越潮濕、越悶。",
   use:"判斷今晚能不能觀測的關鍵。露點貼近氣溫時，七台全天相機的鏡頭會結露，整夜的畫面就糊掉了。也用來預判會不會起霧。",
@@ -804,7 +804,7 @@ var META=[
   what:"換算到海平面高度的大氣壓力。氣壓快速下降常常是天氣要變壞的前兆，颱風接近時會掉得很明顯。",
   use:"追蹤天氣系統。看曲線一路往下就是低壓或颱風在接近，通常之後會變天。這是少數能「提前」看出變化的要素。",
   from:"主機內建氣壓計，已依本站海拔 20 公尺做校正。"},
- {k:"wind",name:"風速",unit:"m/s",dec:1,rf:"wind",
+ {k:"wind",name:"風速",unit:"m/s",dec:1,rf:"wind",daily:{v:"w_avg",peak:"w_max"},
   val:function(d){return d.wind_speed_ms;},
   what:"目前的風速，單位是公尺／秒。換算成常聽到的蒲福風級：約 5.5 m/s 是 4 級（樹葉搖動），10.8 m/s 以上是 6 級（撐傘困難）。",
   use:"判斷器材穩不穩——風大的時候腳架和望遠鏡會晃，拍出來的星點就拖了。也用來決定要不要把戶外的東西收起來。",
@@ -841,7 +841,7 @@ var META=[
   what:"每平方公尺地面接收到的太陽輻射功率。晴朗的正午在台灣大約 800～1000，陰天剩下一兩百，夜間為 0。",
   use:"當成雲量的替代指標。白天的曲線平順就是整天晴朗，鋸齒狀跳動就是雲一直飄過去——這對判斷當晚適不適合觀測很有參考價值。",
   from:"ISS 室外組的日射計。"},
- {k:"uv",name:"紫外線指數",unit:"",dec:1,rf:"uv",
+ {k:"uv",name:"紫外線指數",unit:"",dec:1,rf:"uv",daily:{max:"uv_max"},
   val:function(d){return d.uv_index;},
   what:"紫外線強度分級。3 以下低、3–6 中等、6–8 高、8–11 很高、11 以上極高。高的時候要防曬。",
   use:"戶外教學、朝會、體育課的防曬判斷。恆春半島緯度低、日照強，夏天中午經常到「極高」等級。",
@@ -1173,15 +1173,20 @@ function openDetail(k,keepScroll){
       var f0=dd.v||dd.max||dd.avg||dd.min;
       var dv=days.map(function(e){return e[f0];}).filter(function(v){return v!==undefined&&v!==null;});
       if(dv.length){
-        if(dd.v){
+        // 「合計」只對雨量這種可累加的量有意義。
+        // 時雨率、風速這些是強度，加起來是沒有意義的數字，不能照抄。
+        if(k==="rain"){
           var sum=dv.reduce(function(a,b){return a+b;},0);
           var wet=dv.filter(function(v){return v>=0.1;}).length;
           stats.appendChild(statBox(days.length+" 天合計",fmt(sum,1),m.unit));
           stats.appendChild(statBox("降雨日數",String(wet),"天"));
+        }else{
+          var avg=dv.reduce(function(a,b){return a+b;},0)/dv.length;
+          stats.appendChild(statBox(days.length+" 天平均",fmt(avg,m.dec),m.unit));
         }
         var big=Math.max.apply(null,dv);
         var bigDay=days.filter(function(e){return e[f0]===big;})[0];
-        stats.appendChild(statBox(dd.v?"最大單日":(days.length+" 天最高"),fmt(big,m.dec),m.unit));
+        stats.appendChild(statBox(k==="rain"?"最大單日":(days.length+" 天最高"),fmt(big,m.dec),m.unit));
         if(bigDay)stats.appendChild(statBox("出現日期",zhDate(bigDay.d),""));
       }
     }
@@ -1201,7 +1206,9 @@ function openDetail(k,keepScroll){
       var f=dd.v||dd.max||dd.avg||dd.min;
       barChart(cb2.host,days.map(function(e){
         return {v:(e[f]===undefined?null:e[f]),tick:(+e.d.split("-")[1])+"/"+(+e.d.split("-")[2]),
-          title:zhDateW(e.d),aria:zhDate(e.d)+" "+fmt(e[f],m.dec)};}),
+          title:zhDateW(e.d),
+          extra:(dd.peak&&e[dd.peak]!==undefined)?("當日最大 "+e[dd.peak]+m.unit):null,
+          aria:zhDate(e.d)+" "+fmt(e[f],m.dec)};}),
         {color:css("--s1"),unit:m.unit,h:200,floor:1,aria:m.name+" 每日"});
     }
   }
