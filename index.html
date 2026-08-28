@@ -148,6 +148,20 @@
   th:first-child,td:first-child{text-align:left}
   tbody tr:last-child td{border-bottom:none}
 
+  /* links */
+  .links{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(238px,100%),1fr));gap:11px}
+  .linkcard{display:flex;align-items:center;gap:12px;background:var(--surface);
+    border:1px solid var(--hair);border-radius:11px;padding:13px 15px;
+    box-shadow:var(--shadow);text-decoration:none;color:inherit;min-width:0}
+  .linkcard:hover{border-color:var(--s1)}
+  .linkcard .ic{width:34px;height:34px;flex:none;border-radius:9px;display:grid;place-items:center}
+  .linkcard .ic svg{width:19px;height:19px;display:block}
+  .linkcard .tx{display:flex;flex-direction:column;gap:0;min-width:0}
+  .linkcard .nm{font-size:14.5px;font-weight:600;display:flex;align-items:center;gap:5px}
+  .linkcard .nm .ar{color:var(--muted);font-size:12px;font-weight:400}
+  .linkcard:hover .nm .ar{color:var(--s1)}
+  .linkcard .ds{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
   /* map */
   .mapcard{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:0;
     background:var(--surface);border:1px solid var(--hair);border-radius:12px;
@@ -302,7 +316,6 @@
           <dt>座標</dt><dd class="mono">22.0747°N　120.7152°E</dd>
           <dt>海拔</dt><dd>20 公尺</dd>
           <dt>位置</dt><dd>屏東縣車城鄉　車城國小</dd>
-          <dt>站號</dt><dd>AMS338（AllSky7 流星監測網）</dd>
           <dt>國際編號</dt><dd>IAU P38　—　全球第一個取得國際編號的小學天文台</dd>
         </dl>
         <p class="mapnote">
@@ -313,6 +326,11 @@
         </p>
       </div>
     </div>
+  </div>
+
+  <div class="sec-wrap" id="linksSec" hidden>
+    <h2 class="sec">相關連結</h2>
+    <div class="links" id="links"></div>
   </div>
 
   <details>
@@ -1005,6 +1023,64 @@ setInterval(function(){
   el.textContent=s>0?("下次更新 "+Math.floor(s/60)+":"+pad(s%60)):"更新中…";
 },1000);
 
+/* ---------- links ----------
+   內容來自同目錄的 links.json，可以直接在 GitHub 網頁上編輯，
+   不必重新部署網頁、也不必動車城的機器。                        */
+var LINK_STYLE={
+  youtube :{fg:"#ff0033",bg:"rgba(255,0,51,.12)"},
+  facebook:{fg:"#1877f2",bg:"rgba(24,119,242,.12)"},
+  school  :{fg:"var(--s1)",bg:"rgba(42,120,214,.12)"},
+  link    :{fg:"var(--ink-2)",bg:"rgba(128,128,128,.12)"}
+};
+function linkIcon(kind){
+  var s=el("svg",{viewBox:"0 0 24 24",fill:"none","aria-hidden":"true"});
+  if(kind==="youtube"){
+    s.appendChild(el("rect",{x:2.5,y:5,width:19,height:14,rx:4,fill:"currentColor"}));
+    s.appendChild(el("path",{d:"M10 8.9 L16 12 L10 15.1 Z",fill:"#fff"}));
+  }else if(kind==="facebook"){
+    s.appendChild(el("circle",{cx:12,cy:12,r:9.2,fill:"currentColor"}));
+    var t=el("text",{x:12.2,y:16.8,"text-anchor":"middle","font-size":14,
+      "font-weight":700,fill:"#fff","font-family":"Georgia,'Times New Roman',serif"});
+    t.textContent="f";s.appendChild(t);
+  }else if(kind==="school"){
+    s.appendChild(el("path",{d:"M12 3.2 L21.5 8 L12 12.8 L2.5 8 Z",fill:"currentColor"}));
+    s.appendChild(el("path",{d:"M6 10.6V16c0 1.9 2.7 3.2 6 3.2s6-1.3 6-3.2v-5.4",
+      stroke:"currentColor","stroke-width":2,"stroke-linecap":"round",fill:"none"}));
+  }else{
+    s.appendChild(el("path",{d:"M10.5 13.5a4.2 4.2 0 0 0 6 0l2.8-2.8a4.2 4.2 0 0 0-6-6l-1 1",
+      stroke:"currentColor","stroke-width":2,"stroke-linecap":"round",fill:"none"}));
+    s.appendChild(el("path",{d:"M13.5 10.5a4.2 4.2 0 0 0-6 0l-2.8 2.8a4.2 4.2 0 0 0 6 6l1-1",
+      stroke:"currentColor","stroke-width":2,"stroke-linecap":"round",fill:"none"}));
+  }
+  return s;
+}
+function renderLinks(d){
+  var list=(d&&d.links)||[];
+  var host=document.getElementById("links");host.textContent="";
+  var n=0;
+  list.forEach(function(it){
+    if(!it||!it.url)return;
+    // 只接受 http/https。links.json 可以被別人編輯，不能讓 javascript: 之類的進來。
+    var u=String(it.url);
+    if(!/^https?:\/\//i.test(u))return;
+    var st=LINK_STYLE[it.kind]||LINK_STYLE.link;
+    var a=document.createElement("a");
+    a.className="linkcard";a.href=u;a.target="_blank";a.rel="noopener noreferrer";
+    var ic=document.createElement("span");ic.className="ic";
+    ic.style.background=st.bg;ic.style.color=st.fg;
+    ic.appendChild(linkIcon(it.kind));a.appendChild(ic);
+    var tx=document.createElement("span");tx.className="tx";
+    var nm=document.createElement("span");nm.className="nm";
+    nm.appendChild(document.createTextNode(it.name||u));
+    var ar=document.createElement("span");ar.className="ar";ar.textContent="↗";
+    nm.appendChild(ar);tx.appendChild(nm);
+    if(it.desc){var ds=document.createElement("span");ds.className="ds";
+      ds.textContent=it.desc;tx.appendChild(ds);}
+    a.appendChild(tx);host.appendChild(a);n++;
+  });
+  document.getElementById("linksSec").hidden=(n===0);
+}
+
 /* ---------- load ---------- */
 function get(name){
   return fetch(BASE+name+"?t="+Math.floor(Date.now()/60000),{cache:"no-store"})
@@ -1025,6 +1101,12 @@ function loadRest(){
     get("daily.json").then(function(d){DAILY=d;}).catch(function(){})
   ]).then(drawAll);
 }
+// links.json 與資料不同源：它跟網頁一起放在 main 分支，所以是同源請求。
+fetch("links.json?t="+Math.floor(Date.now()/60000),{cache:"no-store"})
+  .then(function(r){return r.ok?r.json():null;})
+  .then(function(d){if(d)renderLinks(d);})
+  .catch(function(){});
+
 var LATEST_MS=5*60*1000;
 function cycle(){setNext(LATEST_MS);return loadLatest();}
 cycle().then(loadRest);
