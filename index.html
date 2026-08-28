@@ -158,6 +158,19 @@
   .rlab{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:5px}
   .rlab input{font:inherit;font-size:12.5px;color:var(--ink);background:var(--surface);
     border:1px solid var(--hair);border-radius:8px;padding:3px 8px;color-scheme:inherit}
+  /* 詳細頁裡的那組：底色稍深一階，和圖表區分開 */
+  .sheetrange{margin:2px 0 10px;padding:9px 10px;border-radius:9px;background:var(--surface-2);
+    border:1px solid var(--hair)}
+  .sheetrange .rb{font-size:12px;padding:3px 10px}
+  .sheetrange .rlab input{font-size:12px}
+  /* 窄螢幕上這排會折成好幾列，收緊一點免得佔掉太多視野 */
+  @media(max-width:430px){
+    .sheetrange{padding:7px 8px;gap:5px}
+    .sheetrange .rb{font-size:11.5px;padding:2px 8px}
+    .sheetrange .rsep{display:none}
+    .sheetrange .rlab{font-size:11px;gap:3px}
+    .sheetrange .rlab input{font-size:11.5px;padding:2px 5px}
+  }
   .rsum{font-size:12.5px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:4px 18px}
   .rsum b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
   .rsum .miss{color:var(--warn)}
@@ -724,9 +737,24 @@ function renderRangeUI(){
   if(miss)put("缺測",miss+" 天","miss");
 }
 function fmt1(v){return (Math.round(v*10)/10).toFixed(1);}
-function onRangeChange(){
+function onRangeChange(origin){
   renderRangeUI();drawDaily();renderTable();
-  if(CURKEY&&document.getElementById("ov").classList.contains("open"))openDetail(CURKEY,true);
+  if(CURKEY&&document.getElementById("ov").classList.contains("open")){
+    // 從詳細頁裡改動時，重建會讓焦點掉回頁面。記住剛才操作的是哪個控制項，
+    // 重建後把焦點還回去，鍵盤操作才不會斷。
+    var af=document.activeElement,mark=null;
+    if(origin==="sheet"&&af){
+      if(af.classList&&af.classList.contains("rb"))mark={t:"rb",v:af.getAttribute("data-r")};
+      else if(af.tagName==="INPUT")mark={t:"date",v:af.getAttribute("data-w")};
+    }
+    openDetail(CURKEY,true);
+    if(mark){
+      var sel=(mark.t==="rb")?'.sheetrange .rb[data-r="'+mark.v+'"]'
+                             :'.sheetrange input[data-w="'+mark.v+'"]';
+      var el2=document.querySelector(sel);
+      if(el2)el2.focus();
+    }
+  }
 }
 document.querySelectorAll(".rb").forEach(function(x){
   x.addEventListener("click",function(){applyPreset(x.getAttribute("data-r"));onRangeChange();});
@@ -1040,6 +1068,44 @@ function chartBox(title,sub){
   var tip=document.createElement("div");tip.className="tip";b.appendChild(tip);
   return {box:b,host:host};
 }
+/* 詳細頁裡的區間控制項。跟主頁那組共用同一個 RANGE 狀態，
+   在任一處改動，另一處與所有圖表、表格都會同步。 */
+var RANGE_PRESETS=[["7","最近 7 天"],["30","30 天"],["90","90 天"],["month","本月"],["all","全部"]];
+function rangeControls(){
+  var b=dayBounds();
+  var wrap=document.createElement("div");wrap.className="rangebar sheetrange";
+  RANGE_PRESETS.forEach(function(p){
+    var btn=document.createElement("button");
+    btn.type="button";btn.className="rb";btn.setAttribute("data-r",p[0]);
+    btn.textContent=p[1];
+    btn.setAttribute("aria-pressed",RANGE.preset===p[0]?"true":"false");
+    btn.addEventListener("click",function(){applyPreset(p[0]);onRangeChange("sheet");});
+    wrap.appendChild(btn);
+  });
+  var sep=document.createElement("span");sep.className="rsep";sep.setAttribute("aria-hidden","true");
+  wrap.appendChild(sep);
+  [["from","從 "],["to","到 "]].forEach(function(w){
+    var lab=document.createElement("label");lab.className="rlab";
+    lab.appendChild(document.createTextNode(w[1]));
+    var inp=document.createElement("input");inp.type="date";
+    inp.min=b.first;inp.max=b.last;
+    inp.value=(w[0]==="from")?RANGE.from:RANGE.to;
+    inp.setAttribute("data-w",w[0]);
+    inp.addEventListener("change",function(){
+      var f=(w[0]==="from")?inp.value:RANGE.from;
+      var t=(w[0]==="to")?inp.value:RANGE.to;
+      if(!f||!t)return;
+      if(f>t){var tmp=f;f=t;t=tmp;}
+      RANGE.from=(f<b.first)?b.first:f;
+      RANGE.to=(t>b.last)?b.last:t;
+      RANGE.preset="";
+      onRangeChange("sheet");
+    });
+    lab.appendChild(inp);wrap.appendChild(lab);
+  });
+  return wrap;
+}
+
 function statBox(k,v,unit){
   var d=document.createElement("div");d.className="sh-stat";
   var kk=document.createElement("div");kk.className="k";kk.textContent=k;d.appendChild(kk);
@@ -1119,9 +1185,11 @@ function openDetail(k,keepScroll){
         if(bigDay)stats.appendChild(statBox("出現日期",zhDate(bigDay.d),""));
       }
     }
+    var missN=items0.length-days.length;
     var cb2=chartBox("每日歷史",
-      zhDate(RANGE.from)+" – "+zhDate(RANGE.to)+"　有資料 "+days.length+
-      " 天（全站共 "+DAILY.days.length+" 天紀錄，區間可在「每日回顧」上方調整）");
+      zhDate(RANGE.from)+" – "+zhDate(RANGE.to)+"　有資料 "+days.length+" 天"+
+      (missN?("，缺測 "+missN+" 天"):"")+"（全站共 "+DAILY.days.length+" 天紀錄）");
+    cb2.box.insertBefore(rangeControls(),cb2.host);
     charts.appendChild(cb2.box);
     if(dd.min&&dd.max){
       barChart(cb2.host,days.map(function(e){
