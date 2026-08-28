@@ -148,6 +148,20 @@
   th:first-child,td:first-child{text-align:left}
   tbody tr:last-child td{border-bottom:none}
 
+  /* date range */
+  .rangebar{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+  .rb{font:inherit;font-size:12.5px;padding:4px 12px;border-radius:999px;cursor:pointer;
+    border:1px solid var(--hair);background:var(--surface);color:var(--ink-2)}
+  .rb:hover{border-color:var(--hair-2);color:var(--ink)}
+  .rb[aria-pressed="true"]{background:var(--s1);border-color:var(--s1);color:#fff;font-weight:500}
+  .rsep{width:1px;height:19px;background:var(--hair);margin:0 3px}
+  .rlab{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:5px}
+  .rlab input{font:inherit;font-size:12.5px;color:var(--ink);background:var(--surface);
+    border:1px solid var(--hair);border-radius:8px;padding:3px 8px;color-scheme:inherit}
+  .rsum{font-size:12.5px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:4px 18px}
+  .rsum b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+  .rsum .miss{color:var(--warn)}
+
   /* links */
   .links{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(238px,100%),1fr));gap:11px}
   .linkcard{display:flex;align-items:center;gap:12px;background:var(--surface);
@@ -295,6 +309,17 @@
 
   <div class="sec-wrap">
     <h2 class="sec">每日回顧</h2>
+    <div class="rangebar" id="rangebar" role="group" aria-label="歷史資料日期區間">
+      <button class="rb" type="button" data-r="7">最近 7 天</button>
+      <button class="rb" type="button" data-r="30">30 天</button>
+      <button class="rb" type="button" data-r="90">90 天</button>
+      <button class="rb" type="button" data-r="month">本月</button>
+      <button class="rb" type="button" data-r="all">全部</button>
+      <span class="rsep" aria-hidden="true"></span>
+      <label class="rlab">從 <input type="date" id="dFrom"></label>
+      <label class="rlab">到 <input type="date" id="dTo"></label>
+    </div>
+    <div class="rsum" id="rsum"></div>
     <div class="charts">
       <div class="card wide"><h3>每日雨量</h3><p class="cs" id="dayRainSub">mm</p>
         <div id="cDayRain"></div><div class="tip"></div></div>
@@ -634,6 +659,91 @@ function drawCompass(deg,rose){
   }
 }
 
+/* ---------- 日期區間 ----------
+   同時控制「每日回顧」的兩張圖、資料表，以及每個要素詳細頁裡的每日歷史。 */
+var RANGE={from:null,to:null,preset:"30"};
+function parseD(s){var p=s.split("-");return new Date(+p[0],+p[1]-1,+p[2]);}
+function fmtD(dt){var m=dt.getMonth()+1,d=dt.getDate();
+  return dt.getFullYear()+"-"+(m<10?"0":"")+m+"-"+(d<10?"0":"")+d;}
+function addDays(s,n){var dt=parseD(s);dt.setDate(dt.getDate()+n);return fmtD(dt);}
+function dayBounds(){
+  if(!DAILY||!DAILY.days||!DAILY.days.length)return null;
+  return {first:DAILY.days[0].d,last:DAILY.days[DAILY.days.length-1].d};
+}
+function applyPreset(p){
+  var b=dayBounds();if(!b)return;
+  RANGE.preset=p;
+  if(p==="all"){RANGE.from=b.first;RANGE.to=b.last;}
+  else if(p==="month"){RANGE.from=b.last.slice(0,8)+"01";RANGE.to=b.last;}
+  else{RANGE.from=addDays(b.last,-(parseInt(p,10)-1));RANGE.to=b.last;}
+  if(RANGE.from<b.first)RANGE.from=b.first;
+}
+/* 區間內的每一天。缺測的日子回傳 e=null，圖表與表格才看得出斷點，
+   不會把「沒有資料」誤畫成「那天沒下雨」。 */
+function dayItems(){
+  if(!DAILY||!DAILY.days)return [];
+  if(!RANGE.from)applyPreset(RANGE.preset);
+  var map={};DAILY.days.forEach(function(e){map[e.d]=e;});
+  var out=[],d=RANGE.from,guard=0;
+  while(d<=RANGE.to&&guard++<4000){out.push({d:d,e:map[d]||null});d=addDays(d,1);}
+  return out;
+}
+function renderRangeUI(){
+  var b=dayBounds();if(!b)return;
+  document.querySelectorAll(".rb").forEach(function(x){
+    x.setAttribute("aria-pressed",x.getAttribute("data-r")===RANGE.preset?"true":"false");});
+  var f=document.getElementById("dFrom"),t=document.getElementById("dTo");
+  f.min=b.first;f.max=b.last;t.min=b.first;t.max=b.last;
+  f.value=RANGE.from;t.value=RANGE.to;
+
+  var items=dayItems();
+  var have=items.filter(function(i){return i.e;});
+  var miss=items.length-have.length;
+  var rain=0,wet=0,tmax=null,tmin=null,gust=null;
+  have.forEach(function(i){
+    var e=i.e;
+    if(e.rain){rain+=e.rain;if(e.rain>=0.1)wet++;}
+    if(e.t_max!==undefined&&(tmax===null||e.t_max>tmax))tmax=e.t_max;
+    if(e.t_min!==undefined&&(tmin===null||e.t_min<tmin))tmin=e.t_min;
+    if(e.gust_max!==undefined&&(gust===null||e.gust_max>gust))gust=e.gust_max;
+  });
+  var s=document.getElementById("rsum");s.textContent="";
+  function put(k,v,cls){
+    var w=document.createElement("span");
+    if(cls)w.className=cls;
+    w.appendChild(document.createTextNode(k+" "));
+    var b2=document.createElement("b");b2.textContent=v;w.appendChild(b2);
+    s.appendChild(w);
+  }
+  put(zhDate(RANGE.from)+"–"+zhDate(RANGE.to)+"　共",items.length+" 天");
+  put("總雨量",fmt1(rain)+" mm");
+  put("降雨",wet+" 天");
+  if(tmax!==null)put("最高溫",fmt(tmax,1)+"°C");
+  if(tmin!==null)put("最低溫",fmt(tmin,1)+"°C");
+  if(gust!==null)put("最大陣風",fmt(gust,1)+" m/s");
+  if(miss)put("缺測",miss+" 天","miss");
+}
+function fmt1(v){return (Math.round(v*10)/10).toFixed(1);}
+function onRangeChange(){
+  renderRangeUI();drawDaily();renderTable();
+  if(CURKEY&&document.getElementById("ov").classList.contains("open"))openDetail(CURKEY,true);
+}
+document.querySelectorAll(".rb").forEach(function(x){
+  x.addEventListener("click",function(){applyPreset(x.getAttribute("data-r"));onRangeChange();});
+});
+["dFrom","dTo"].forEach(function(id){
+  document.getElementById(id).addEventListener("change",function(){
+    var b=dayBounds();if(!b)return;
+    var f=document.getElementById("dFrom").value,t=document.getElementById("dTo").value;
+    if(!f||!t)return;
+    if(f>t){var tmp=f;f=t;t=tmp;}
+    RANGE.from=f<b.first?b.first:f;
+    RANGE.to=t>b.last?b.last:t;
+    RANGE.preset="";
+    onRangeChange();
+  });
+});
+
 /* ---------- render ---------- */
 /* ---------- 要素定義 ----------
    rf   = recent.json 的欄位名（有才畫得出 48 小時曲線）
@@ -872,34 +982,52 @@ function drawAll(){
     drawCompass(ld,rose);
   }
 
-  if(DAILY&&DAILY.days&&DAILY.days.length){
-    var days=DAILY.days.slice(-30);
-    document.getElementById("dayRainSub").textContent=
-      "mm · 最近 "+days.length+" 天（共 "+DAILY.days.length+" 天紀錄）";
-    barChart(document.getElementById("cDayRain"),days.map(function(e){
-      return {v:e.rain,tick:(+e.d.split("-")[1])+"/"+(+e.d.split("-")[2]),title:zhDateW(e.d),
-        extra:e.rain_peak?("峰值 "+e.rain_peak+" mm/hr（"+e.rain_peak_at+"）"):null,
-        aria:zhDate(e.d)+" 雨量 "+fmt(e.rain,1)+" 毫米"};}),
-      {color:css("--s1"),unit:"mm",floor:5,h:210,aria:"每日雨量"});
+  drawDaily();
+  renderTable();
+}
 
-    barChart(document.getElementById("cDayTemp"),days.map(function(e){
-      return {v:(e.t_min===undefined?null:e.t_min),v2:(e.t_max===undefined?null:e.t_max),
-        tick:(+e.d.split("-")[1])+"/"+(+e.d.split("-")[2]),title:zhDateW(e.d),
-        extra:e.t_avg!==undefined?("平均 "+e.t_avg+"°C"):null,
-        aria:zhDate(e.d)+" 最低 "+fmt(e.t_min,1)+" 最高 "+fmt(e.t_max,1)+" 度"};}),
-      {color:css("--s2"),unit:"°C",range:true,h:210,aria:"每日氣溫範圍"});
+function dayTick(d){return (+d.split("-")[1])+"/"+(+d.split("-")[2]);}
 
-    var tb=document.querySelector("#dayTable tbody");tb.textContent="";
-    DAILY.days.slice().reverse().forEach(function(e){
-      var tr=document.createElement("tr");
-      [zhDateW(e.d),fmt(e.rain,1),e.rain_peak!==undefined?fmt(e.rain_peak,1):"—",
+function drawDaily(){
+  if(!DAILY||!DAILY.days||!DAILY.days.length)return;
+  var items=dayItems();
+  var miss=items.filter(function(i){return !i.e;}).length;
+  document.getElementById("dayRainSub").textContent=
+    "mm · "+zhDate(RANGE.from)+" – "+zhDate(RANGE.to)+"　共 "+items.length+" 天"+
+    (miss?("（其中 "+miss+" 天缺測）"):"");
+
+  barChart(document.getElementById("cDayRain"),items.map(function(i){
+    return {v:i.e?i.e.rain:null,tick:dayTick(i.d),title:zhDateW(i.d),
+      extra:!i.e?"缺測":(i.e.rain_peak?("峰值 "+i.e.rain_peak+" mm/hr（"+i.e.rain_peak_at+"）"):null),
+      aria:zhDate(i.d)+(i.e?(" 雨量 "+fmt(i.e.rain,1)+" 毫米"):" 缺測")};}),
+    {color:css("--s1"),unit:"mm",floor:5,h:210,aria:"每日雨量"});
+
+  barChart(document.getElementById("cDayTemp"),items.map(function(i){
+    var e=i.e;
+    return {v:(e&&e.t_min!==undefined)?e.t_min:null,
+      v2:(e&&e.t_max!==undefined)?e.t_max:null,
+      tick:dayTick(i.d),title:zhDateW(i.d),
+      extra:!e?"缺測":(e.t_avg!==undefined?("平均 "+e.t_avg+"°C"):null),
+      aria:zhDate(i.d)+(e?(" 最低 "+fmt(e.t_min,1)+" 最高 "+fmt(e.t_max,1)+" 度"):" 缺測")};}),
+    {color:css("--s2"),unit:"°C",range:true,h:210,aria:"每日氣溫範圍"});
+}
+
+function renderTable(){
+  if(!DAILY||!DAILY.days)return;
+  var tb=document.querySelector("#dayTable tbody");tb.textContent="";
+  dayItems().slice().reverse().forEach(function(i){
+    var e=i.e,tr=document.createElement("tr");
+    var cells=e?[zhDateW(i.d),fmt(e.rain,1),e.rain_peak!==undefined?fmt(e.rain_peak,1):"—",
        e.t_max!==undefined?fmt(e.t_max,1):"—",e.t_min!==undefined?fmt(e.t_min,1):"—",
        e.rh_avg!==undefined?e.rh_avg:"—",e.p_min!==undefined?fmt(e.p_min,1):"—",
-       e.gust_max!==undefined?fmt(e.gust_max,1):"—",e.solar_max!==undefined?e.solar_max:"—"
-      ].forEach(function(v){var td=document.createElement("td");td.textContent=v;tr.appendChild(td);});
-      tb.appendChild(tr);
-    });
-  }
+       e.gust_max!==undefined?fmt(e.gust_max,1):"—",e.solar_max!==undefined?e.solar_max:"—"]
+      :[zhDateW(i.d),"缺測","—","—","—","—","—","—","—"];
+    cells.forEach(function(v,ci){
+      var td=document.createElement("td");td.textContent=v;
+      if(!e&&ci>0)td.className="na";
+      tr.appendChild(td);});
+    tb.appendChild(tr);
+  });
 }
 
 /* ---------- detail sheet ---------- */
@@ -971,7 +1099,8 @@ function openDetail(k,keepScroll){
   }
 
   if(m.daily&&DAILY&&DAILY.days&&DAILY.days.length){
-    var days=DAILY.days.slice(-30),dd=m.daily;
+    var items0=dayItems(),dd=m.daily;
+    var days=items0.filter(function(i){return i.e;}).map(function(i){return i.e;});
     // 沒有 48 小時逐筆的項目（例如雨量），統計就改由每日彙總來算，
     // 免得詳細頁只有一張圖、上面空空的。
     if(!stats.children.length){
@@ -991,7 +1120,8 @@ function openDetail(k,keepScroll){
       }
     }
     var cb2=chartBox("每日歷史",
-      "最近 "+days.length+" 天（全站共 "+DAILY.days.length+" 天紀錄）");
+      zhDate(RANGE.from)+" – "+zhDate(RANGE.to)+"　有資料 "+days.length+
+      " 天（全站共 "+DAILY.days.length+" 天紀錄，區間可在「每日回顧」上方調整）");
     charts.appendChild(cb2.box);
     if(dd.min&&dd.max){
       barChart(cb2.host,days.map(function(e){
@@ -1118,7 +1248,12 @@ function loadRest(){
   return Promise.all([
     get("recent.json").then(function(d){RECENT=d;}).catch(function(){}),
     get("daily.json").then(function(d){DAILY=d;}).catch(function(){})
-  ]).then(drawAll);
+  ]).then(function(){
+    // 使用者已經挑過區間就別覆蓋掉；只有第一次載入才套預設。
+    if(DAILY&&DAILY.days&&DAILY.days.length&&!RANGE.from)applyPreset(RANGE.preset);
+    if(DAILY&&DAILY.days&&DAILY.days.length)renderRangeUI();
+    drawAll();
+  });
 }
 // links.json 與資料不同源：它跟網頁一起放在 main 分支，所以是同源請求。
 fetch("links.json?t="+Math.floor(Date.now()/60000),{cache:"no-store"})
