@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>車城國小 南十字天文台 · 氣象站</title>
 <meta name="description" content="屏東車城國小南十字天文台（IAU P38）Davis 氣象站即時觀測：氣溫、濕度、露點、氣壓、風速、雨量、日照、紫外線。">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="logo.png">
+<meta property="og:title" content="車城國小 南十字天文台 · 氣象站">
+<meta property="og:description" content="屏東車城 IAU P38 天文台的即時氣象觀測與歷史查詢。">
+<meta property="og:image" content="https://cces026.github.io/cces-crux-weather/logo.png">
+<meta property="og:type" content="website">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+TC:wght@400;500;600;700&display=swap">
 <style>
   :root {
@@ -43,7 +49,9 @@
   .wrap{max-width:1120px;margin:0 auto;padding:24px 18px 56px;display:flex;flex-direction:column;gap:22px}
 
   /* header */
-  header{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
+  header{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+  .logo{width:62px;height:62px;flex:none;border-radius:50%;display:block}
+  @media(max-width:520px){.logo{width:48px;height:48px}}
   .brand{display:flex;flex-direction:column;gap:1px;min-width:0}
   .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.13em;
     text-transform:uppercase;color:var(--muted)}
@@ -140,6 +148,23 @@
   th:first-child,td:first-child{text-align:left}
   tbody tr:last-child td{border-bottom:none}
 
+  /* map */
+  .mapcard{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:0;
+    background:var(--surface);border:1px solid var(--hair);border-radius:12px;
+    overflow:hidden;box-shadow:var(--shadow)}
+  .mapwrap{position:relative;min-height:260px;background:var(--surface-2)}
+  .mapwrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+  .mapinfo{padding:16px 18px;display:flex;flex-direction:column;gap:11px;justify-content:center;min-width:0}
+  .mapinfo dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:14px}
+  .mapinfo dt{font-size:12px;color:var(--muted);white-space:nowrap}
+  .mapinfo dd{margin:0;color:var(--ink-2)}
+  .mapnote{margin:0;font-size:11.5px;color:var(--muted)}
+  .mapnote a{color:var(--s1)}
+  @media(max-width:640px){
+    .mapcard{grid-template-columns:1fr}
+    .mapwrap{min-height:220px;border-bottom:1px solid var(--hair)}
+  }
+
   /* detail overlay */
   .ov{position:fixed;inset:0;background:rgba(8,12,17,.55);display:none;z-index:50;
     padding:20px;overflow-y:auto;-webkit-overflow-scrolling:touch}
@@ -186,6 +211,8 @@
 <div class="wrap">
 
   <header>
+    <img class="logo" src="logo.png" width="384" height="384"
+         alt="車城國小南十字天文台識別標誌：南十字五星、P38 圓頂、車城國小紀念碑與落山風飄帶">
     <div class="brand">
       <div class="eyebrow">AMS338 · IAU P38 · 22.07°N 120.72°E</div>
       <h1>車城國小 南十字天文台 氣象站</h1>
@@ -262,6 +289,32 @@
     </div>
   </div>
 
+  <div class="sec-wrap">
+    <h2 class="sec">測站位置</h2>
+    <div class="mapcard">
+      <div class="mapwrap">
+        <iframe id="osm" title="南十字天文台在 OpenStreetMap 上的位置" loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          src="https://www.openstreetmap.org/export/embed.html?bbox=120.70720%2C22.06670%2C120.72320%2C22.08270&amp;layer=mapnik&amp;marker=22.07470%2C120.71520"></iframe>
+      </div>
+      <div class="mapinfo">
+        <dl>
+          <dt>座標</dt><dd class="mono">22.0747°N　120.7152°E</dd>
+          <dt>海拔</dt><dd>20 公尺</dd>
+          <dt>位置</dt><dd>屏東縣車城鄉　車城國小</dd>
+          <dt>站號</dt><dd>AMS338（AllSky7 流星監測網）</dd>
+          <dt>國際編號</dt><dd>IAU P38　—　全球第一個取得國際編號的小學天文台</dd>
+        </dl>
+        <p class="mapnote">
+          <a href="https://www.openstreetmap.org/?mlat=22.0747&amp;mlon=120.7152#map=15/22.0747/120.7152"
+             target="_blank" rel="noopener">在 OpenStreetMap 開啟大地圖 ↗</a>
+          　·　地圖資料 ©
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 貢獻者
+        </p>
+      </div>
+    </div>
+  </div>
+
   <details>
     <summary>資料表 · 每日明細</summary>
     <div class="tw"><table id="dayTable"><thead><tr>
@@ -282,6 +335,7 @@
       <div class="sh-note">
         <dl>
           <dt>這是什麼</dt><dd id="shWhat">—</dd>
+          <dt>有什麼用</dt><dd id="shUse">—</dd>
           <dt>資料來源</dt><dd id="shFrom">—</dd>
         </dl>
       </div>
@@ -562,72 +616,88 @@ var META=[
  {k:"temp",name:"氣溫",unit:"°C",dec:1,rf:"temp",daily:{min:"t_min",max:"t_max",avg:"t_avg"},
   val:function(d){return d.temp_c;},
   what:"感測器實測的空氣溫度，也就是一般講的「幾度」。",
+  use:"最基本的天氣指標。對天文台來說還有一個特別的用途：氣溫和露點的差距決定鏡頭會不會結露，差距越小越危險。",
   from:"ISS 室外組的溫度感測器，裝在百葉罩內避免曬到太陽，無線傳回主機。"},
  {k:"dew",name:"露點",unit:"°C",dec:1,rf:"dew",
   val:function(d){return d.dew_point_c;},
   what:"空氣冷到這個溫度時，水氣就會開始凝結成露水或霧。露點越接近氣溫，代表空氣越潮濕、越悶。",
+  use:"判斷今晚能不能觀測的關鍵。露點貼近氣溫時，七台全天相機的鏡頭會結露，整夜的畫面就糊掉了。也用來預判會不會起霧。",
   from:"主機用氣溫與相對濕度換算。"},
  {k:"rh",name:"相對濕度",unit:"%",dec:0,rf:"rh",daily:{avg:"rh_avg"},
   val:function(d){return d.humidity_pct;},
   what:"空氣裡的水氣，佔「這個溫度下最多能容納的量」的百分比。100% 就是飽和。",
+  use:"判斷悶不悶熱、會不會起霧。長期偏高也代表器材防潮要注意。",
   from:"ISS 室外組的濕度感測器。"},
  {k:"feel",name:"體感溫度",unit:"°C",dec:1,
   val:function(d){return (d.thsw_index_c!==null&&d.thsw_index_c!==undefined)?d.thsw_index_c:d.heat_index_c;},
   what:"THSW 指數：把溫度、濕度、日照、風四項一起算進去的人體感受溫度。大太陽底下會比氣溫高十幾度，那是正常的——曬太陽本來就比站在陰影下熱。",
+  use:"安排戶外課程、觀星活動時判斷會不會太熱、要不要提醒學生補水或改到陰影下。比單看氣溫實用。",
   from:"主機依 Davis 的 THSW 公式即時計算。",
   nohist:"這個項目是主機當場算出來的，沒有寫進歷史檔，所以查不到過去的值。要補的話得改動氣象站的錄製程式，那支程式是整條資料鏈的核心，不宜為了這個去動它。"},
  {k:"pres",name:"氣壓",unit:"hPa",dec:1,rf:"pres",daily:{min:"p_min",max:"p_max"},
   val:function(d){return d.pressure_hpa;},
   what:"換算到海平面高度的大氣壓力。氣壓快速下降常常是天氣要變壞的前兆，颱風接近時會掉得很明顯。",
+  use:"追蹤天氣系統。看曲線一路往下就是低壓或颱風在接近，通常之後會變天。這是少數能「提前」看出變化的要素。",
   from:"主機內建氣壓計，已依本站海拔 20 公尺做校正。"},
  {k:"wind",name:"風速",unit:"m/s",dec:1,rf:"wind",
   val:function(d){return d.wind_speed_ms;},
   what:"目前的風速，單位是公尺／秒。換算成常聽到的蒲福風級：約 5.5 m/s 是 4 級（樹葉搖動），10.8 m/s 以上是 6 級（撐傘困難）。",
+  use:"判斷器材穩不穩——風大的時候腳架和望遠鏡會晃，拍出來的星點就拖了。也用來決定要不要把戶外的東西收起來。",
   from:"ISS 室外組的風杯式風速計，風杯轉得越快風速越大。"},
  {k:"gust",name:"陣風",unit:"m/s",dec:1,rf:"gust",daily:{max:"gust_max"},
   val:function(d){return d.wind_gust_ms;},
   what:"這段時間內測到的最大瞬間風速。判斷會不會吹倒東西要看陣風，不是看平均風速。",
+  use:"真正會造成損害的是陣風。颱風警戒、戶外活動要不要取消、器材要不要固定，看這個數字比看平均風速準。",
   from:"ISS 室外組的風速計，取區間最大值。"},
  {k:"avg10",name:"10 分鐘平均風",unit:"m/s",dec:1,
   val:function(d){return d.wind_avg10_ms;},
   what:"過去十分鐘的平均風速。氣象觀測講「風力幾級」通常是用這種平均值，比瞬間值穩定。",
+  use:"要和中央氣象署的預報或其他測站對照時用這個——官方發布的風力就是這種平均值，拿瞬間值去比會對不起來。",
   from:"主機自行累計。",
   nohist:"主機只提供當下這個十分鐘的平均值，沒有寫進歷史檔。想看長期趨勢請改看「風速」。"},
  {k:"dir",name:"風向",unit:"",dec:0,rf:"dir",text:true,
   val:function(d){return d.wind_dir_deg;},
   what:"風「從哪裡吹來」的方位。0° 是北、90° 是東、180° 是南、270° 是西。",
+  use:"看天氣系統從哪來。車城夏天吹西南季風，冬天吹強勁的東北季風——也就是恆春半島有名的「落山風」。風向轉變往往就是季節轉換的訊號。",
   from:"ISS 室外組的風向標。"},
  {k:"rain",name:"今日累積雨量",unit:"mm",dec:1,daily:{v:"rain"},
   val:function(d){return d.rain_mm;},
   what:"台灣時間當天零點到現在累積的雨量。每天午夜自動歸零。",
+  use:"看今天下了多少。中央氣象署的標準：一天累積 80 mm 以上叫大雨、200 mm 以上叫豪雨。也是校園排水、活動異動的判斷依據。",
   from:"翻斗式雨量計：小杯子接滿 0.2 mm 就翻倒一次並計數。",
   note:"因為一格是 0.2 mm，毛毛雨小於一格不會被計到——現場在飄雨、數字卻沒動，是正常的。"},
  {k:"rate",name:"目前時雨率",unit:"mm/hr",dec:1,rf:"rate",daily:{v:"rain_peak"},
   val:function(d){return d.rain_rate_mmhr;},
   what:"依照現在這一刻的雨勢，換算「如果這樣下滿一小時會累積多少」。所以短暫的大雨會出現很高的數字，但不代表真的會下那麼多。",
+  use:"判斷雨勢強弱。短時間的強降雨（時雨率破百）才是造成積水的元凶，看單日總量看不出來。",
   from:"主機依翻斗翻倒的頻率即時換算。"},
  {k:"solar",name:"日照強度",unit:"W/m²",dec:0,rf:"solar",daily:{max:"solar_max"},
   val:function(d){return d.solar_wm2;},
   what:"每平方公尺地面接收到的太陽輻射功率。晴朗的正午在台灣大約 800～1000，陰天剩下一兩百，夜間為 0。",
+  use:"當成雲量的替代指標。白天的曲線平順就是整天晴朗，鋸齒狀跳動就是雲一直飄過去——這對判斷當晚適不適合觀測很有參考價值。",
   from:"ISS 室外組的日射計。"},
  {k:"uv",name:"紫外線指數",unit:"",dec:1,rf:"uv",
   val:function(d){return d.uv_index;},
   what:"紫外線強度分級。3 以下低、3–6 中等、6–8 高、8–11 很高、11 以上極高。高的時候要防曬。",
+  use:"戶外教學、朝會、體育課的防曬判斷。恆春半島緯度低、日照強，夏天中午經常到「極高」等級。",
   from:"ISS 室外組的紫外線感測器。"},
  {k:"chill",name:"風寒溫度",unit:"°C",dec:1,
   val:function(d){return d.wind_chill_c;},
   what:"寒冷時，風把體表熱量帶走造成的「感覺更冷」溫度。",
+  use:"在本站沒有實用價值——它只在低溫時才有意義。留著是為了完整呈現主機提供的所有欄位，同時也是一個好例子：儀器給你的數字，要先確認它在你的環境下說不說得通。",
   from:"主機依 Davis 公式計算。",
   note:"風寒只在低溫（大約 10°C 以下）才有物理意義。車城幾乎不會這麼冷，所以這個值長年等於氣溫——不是壞掉，是這個指標在亞熱帶用不上。",
   nohist:"沒有寫進歷史檔。反正在本站它等於氣溫，要看歷史請改看「氣溫」。"},
  {k:"itemp",name:"室內溫度",unit:"°C",dec:1,
   val:function(d){return d.indoor_temp_c;},
   what:"天文台室內的溫度。",
+  use:"監看設備所在的環境。室內電腦、錄影主機、氣象主機過熱都會出問題，這是最早能看出散熱異常的訊號。",
   from:"Davis console 主機「本身內建」的感測器——不是室外那組。console 放在天文台室內、用 USB 線接到直播電腦，所以量到的是它所在那個房間。",
   nohist:"沒有寫進歷史檔。這個值反映的是室內環境而不是天氣，對觀測沒有直接用途，當初就沒收。"},
  {k:"ihum",name:"室內濕度",unit:"%",dec:0,
   val:function(d){return d.indoor_hum_pct;},
   what:"天文台室內的相對濕度。太高的話電子設備容易受潮，這也是它值得留意的原因。",
+  use:"防潮。濕度長期偏高，望遠鏡的光學鏡片會長黴、電子接點會鏽蝕——恆春半島濕度高，這對天文台是真實的維護課題。",
   from:"Davis console 主機本身內建的感測器，與室內溫度同一顆。",
   nohist:"沒有寫進歷史檔，原因同室內溫度。"}
 ];
@@ -829,6 +899,7 @@ function openDetail(k,keepScroll){
   if(m.unit||k==="dir"){var u=document.createElement("small");
     u.textContent=k==="dir"?((cur===null||cur===undefined)?"":cur+"°"):m.unit;nowEl.appendChild(u);}
   document.getElementById("shWhat").textContent=m.what+(m.note?"　"+m.note:"");
+  document.getElementById("shUse").textContent=m.use||"—";
   document.getElementById("shFrom").textContent=m.from;
 
   var stats=document.getElementById("shStats");stats.textContent="";
