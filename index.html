@@ -530,10 +530,13 @@ function renderLatest(){
 
   document.getElementById("hTemp").textContent=fmt(d.temp_c,1);
   document.getElementById("hTemp").className="";
-  var feel=d.thsw_index_c!==null&&d.thsw_index_c!==undefined?d.thsw_index_c:
+  // THSW 把日照輻射算進去，大太陽下會比氣溫高十幾度，那是正常的。
+  // 首屏一定要標明是哪一種體感，否則看起來像數字壞掉。
+  var useThsw=d.thsw_index_c!==null&&d.thsw_index_c!==undefined;
+  var feel=useThsw?d.thsw_index_c:
            (d.heat_index_c!==null&&d.heat_index_c!==undefined?d.heat_index_c:null);
   var parts=[];
-  if(feel!==null)parts.push("體感 "+fmt(feel,1)+"°C");
+  if(feel!==null)parts.push((useThsw?"日曬下體感 ":"體感 ")+fmt(feel,1)+"°C");
   parts.push("濕度 "+fmt(d.humidity_pct,0)+"%");
   if(d.rain_rate_mmhr>0)parts.push("正在下雨 "+fmt(d.rain_rate_mmhr,1)+" mm/hr");
   document.getElementById("hSub").textContent=parts.join("　·　");
@@ -554,7 +557,7 @@ function renderLatest(){
     ["氣溫",fmt(d.temp_c,1),"°C",null,false],
     ["露點",fmt(d.dew_point_c,1),"°C","空氣飽和的溫度",false],
     ["相對濕度",fmt(d.humidity_pct,0),"%",null,false],
-    ["體感溫度",fmt(feel,1),"°C",d.thsw_index_c!==null&&d.thsw_index_c!==undefined?"THSW（含日照與風）":"熱指數",false],
+    ["體感溫度",fmt(feel,1),"°C",useThsw?"THSW：把日照與風算進去，大太陽下會明顯高於氣溫":"熱指數（溫濕度）",false],
     ["氣壓",fmt(d.pressure_hpa,1),"hPa",null,false],
     ["風速",fmt(d.wind_speed_ms,1),"m/s",ws?"訊號可疑":null,ws],
     ["陣風",fmt(d.wind_gust_ms,1),"m/s",ws?"訊號可疑":null,ws],
