@@ -1,0 +1,92 @@
+# 放進 GitHub repo 的 main 分支，路徑 .github/workflows/stale-check.yml
+#
+# 用途：資料停更時自動開 issue，GitHub 會寄信通知。跑在雲端，所以
+# 校內機器整台掛掉也照樣會通知——這正是 2026-08-15 那次「無聲死亡」
+# 拖了十一天沒人發現的解方。
+
+name: weather-stale-check
+
+on:
+  schedule:
+    - cron: '7 * * * *'      # 每小時 :07（避開整點尖峰，排程比較準時）
+  workflow_dispatch:          # 也可以手動觸發測試
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 讀 data 分支的 latest.json 並判斷是否停更
+        id: probe
+        env:
+          STALE_MINUTES: '45'   # 推送間隔 10 分，抓 45 分容忍偶發網路失敗
+        run: |
+          set -euo pipefail
+          URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/data/latest.json"
+          if ! curl -fsSL "$URL" -o latest.json; then
+            echo "state=missing" >> "$GITHUB_OUTPUT"
+            echo "detail=data 分支上讀不到 latest.json" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          OBS=$(python3 -c "import json;print(json.load(open('latest.json'))['observed_at_local'])")
+          AGE=$(python3 -c "
+          import json,datetime
+          d=json.load(open('latest.json'))
+          t=datetime.datetime.fromisoformat(d['observed_at_local'])
+          now=datetime.datetime.now(t.tzinfo)
+          print(int((now-t).total_seconds()//60))
+          ")
+          echo "觀測時間 $OBS，距今 $AGE 分鐘"
+          if [ "$AGE" -gt "$STALE_MINUTES" ]; then
+            echo "state=stale" >> "$GITHUB_OUTPUT"
+            echo "detail=最後觀測 $OBS，已經 $AGE 分鐘沒有新資料" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=ok" >> "$GITHUB_OUTPUT"
+            echo "detail=最後觀測 $OBS（$AGE 分鐘前）" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 停更就開 issue（已經有一張就不重複開）
+        if: steps.probe.outputs.state != 'ok'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DETAIL: ${{ steps.probe.outputs.detail }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh issue list --label wx-stale --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "仍未恢復：${DETAIL}（$(date -u '+%Y-%m-%d %H:%M UTC')）"
+            exit 0
+          fi
+          gh label create wx-stale --color B60205 --description "氣象資料停更" 2>/dev/null || true
+          gh issue create --label wx-stale \
+            --title "氣象資料停更" \
+            --body "$(cat <<EOF
+          ${DETAIL}
+
+          ### 排查順序（詳見工作區 SOP\\故障排除.md E 段）
+
+          1. \`ssh weather\` 後看 \`C:\\WeatherWeb\\wx_cycle.log\` 最後幾行
+          2. 看 \`C:\\WeatherWeb\\davis_weather.log\`——有沒有 \`stream error\`
+          3. 排程 \`MeteorLive-Weather\` 與 \`MeteorLive-WxPublish\` 是否還在
+          4. COM16 被佔？（有人開了 WeatherLink 就會搶）
+          5. token 過期？看 \`wx_publish.log\` 有沒有 HTTP 401
+          6. 直播機整台掛了？先確認 Tailscale 連得上
+
+          資料恢復後請手動關閉這張 issue。
+          EOF
+          )"
+
+      - name: 恢復了就關掉舊 issue
+        if: steps.probe.outputs.state == 'ok'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DETAIL: ${{ steps.probe.outputs.detail }}
+        run: |
+          set -euo pipefail
+          for n in $(gh issue list --label wx-stale --state open --json number --jq '.[].number'); do
+            gh issue comment "$n" --body "已恢復：${DETAIL}"
+            gh issue close "$n"
+          done
