@@ -175,6 +175,8 @@
     .sheetrange .rlab{font-size:11px;gap:3px}
     .sheetrange .rlab input{font-size:11.5px;padding:2px 5px}
   }
+  .rb.dl{border-color:var(--s1);color:var(--s1)}
+  .rb.dl:hover{background:var(--s1);color:#fff}
   .rsum{font-size:12.5px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:4px 18px}
   .rsum b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
   .rsum .miss{color:var(--warn)}
@@ -337,6 +339,9 @@
       <span class="rsep" aria-hidden="true"></span>
       <label class="rlab">從 <input type="date" id="dFrom"></label>
       <label class="rlab">到 <input type="date" id="dTo"></label>
+      <span class="rsep" aria-hidden="true"></span>
+      <button class="rb dl" type="button" id="dlCsv" title="下載目前區間的每日資料（CSV，Excel 可直接開）">⬇ CSV</button>
+      <button class="rb dl" type="button" id="dlXlsx" title="下載目前區間的每日資料（Excel 活頁簿，含欄位說明）">⬇ Excel</button>
     </div>
     <div class="rsum" id="rsum"></div>
     <div class="charts">
@@ -722,7 +727,8 @@ function dayItems(){
 }
 function renderRangeUI(){
   var b=dayBounds();if(!b)return;
-  document.querySelectorAll(".rb").forEach(function(x){
+  // 一定要限定 [data-r]：下載按鈕也用 .rb 套樣式，但它們不是區間按鈕。
+  document.querySelectorAll(".rb[data-r]").forEach(function(x){
     x.setAttribute("aria-pressed",x.getAttribute("data-r")===RANGE.preset?"true":"false");});
   var f=document.getElementById("dFrom"),t=document.getElementById("dTo");
   f.min=b.first;f.max=b.last;t.min=b.first;t.max=b.last;
@@ -775,7 +781,9 @@ function onRangeChange(origin){
     }
   }
 }
-document.querySelectorAll(".rb").forEach(function(x){
+// 同樣要限定 [data-r]，否則下載按鈕會被綁上 applyPreset(null)，
+// 把區間打成 NaN——2026-08-31 實際踩到過。
+document.querySelectorAll(".rangebar .rb[data-r]").forEach(function(x){
   x.addEventListener("click",function(){applyPreset(x.getAttribute("data-r"));onRangeChange();});
 });
 ["dFrom","dTo"].forEach(function(id){
@@ -1265,6 +1273,170 @@ setInterval(function(){
   var s=Math.max(0,Math.round((NEXT-Date.now())/1000));
   el.textContent=s>0?("下次更新 "+Math.floor(s/60)+":"+pad(s%60)):"更新中…";
 },1000);
+
+/* ================= 資料匯出 =================
+   CSV 一定要加 UTF-8 BOM，否則 Excel 會用系統預設編碼開，中文全變亂碼。
+   Excel 則是自己組最小的 .xlsx（ZIP + XML），不引用任何外部函式庫——
+   學校網頁少一個 CDN 相依就少一個故障點，離線也能用。            */
+var EXPORT_COLS=[
+ ["日期",         function(e,d){return d;}                       ,"s"],
+ ["雨量(mm)",     function(e){return e.rain;}                     ,"n"],
+ ["峰值時雨率(mm/hr)",function(e){return e.rain_peak;}            ,"n"],
+ ["峰值時間",     function(e){return e.rain_peak_at;}             ,"s"],
+ ["最高溫(C)",    function(e){return e.t_max;}                    ,"n"],
+ ["最低溫(C)",    function(e){return e.t_min;}                    ,"n"],
+ ["平均溫(C)",    function(e){return e.t_avg;}                    ,"n"],
+ ["露點最高(C)",  function(e){return e.d_max;}                    ,"n"],
+ ["露點最低(C)",  function(e){return e.d_min;}                    ,"n"],
+ ["平均濕度(%)",  function(e){return e.rh_avg;}                   ,"n"],
+ ["最低氣壓(hPa)",function(e){return e.p_min;}                    ,"n"],
+ ["最高氣壓(hPa)",function(e){return e.p_max;}                    ,"n"],
+ ["平均風速(m/s)",function(e){return e.w_avg;}                    ,"n"],
+ ["最大風速(m/s)",function(e){return e.w_max;}                    ,"n"],
+ ["最大陣風(m/s)",function(e){return e.gust_max;}                 ,"n"],
+ ["最強日照(W/m2)",function(e){return e.solar_max;}               ,"n"],
+ ["最高UV",       function(e){return e.uv_max;}                   ,"n"],
+ ["觀測筆數",     function(e){return e.n;}                        ,"n"]
+];
+
+function exportRows(){
+  var rows=[EXPORT_COLS.map(function(c){return c[0];})];
+  dayItems().forEach(function(i){
+    if(!i.e){ // 缺測的日子要留一列，不能無聲跳過
+      rows.push([i.d].concat(EXPORT_COLS.slice(1).map(function(){return "缺測";})));
+      return;
+    }
+    rows.push(EXPORT_COLS.map(function(c){
+      var v=c[1](i.e,i.d);
+      return (v===undefined||v===null)?"":v;
+    }));
+  });
+  return rows;
+}
+function exportName(ext){
+  return "車城氣象_"+RANGE.from+"_至_"+RANGE.to+"."+ext;
+}
+function saveBlob(blob,name){
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(url);a.remove();},1500);
+}
+function toCSV(rows){
+  return rows.map(function(r){
+    return r.map(function(v){
+      v=(v===null||v===undefined)?"":String(v);
+      return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v;
+    }).join(",");
+  }).join("\r\n");
+}
+function downloadCSV(){
+  // ﻿ = UTF-8 BOM。沒有它 Excel 開中文欄位就是亂碼。
+  var blob=new Blob(["﻿"+toCSV(exportRows())],{type:"text/csv;charset=utf-8"});
+  saveBlob(blob,exportName("csv"));
+}
+
+/* ---- 最小 .xlsx 產生器 ---- */
+var CRCT=(function(){var t=new Uint32Array(256);
+  for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}
+  return t;})();
+function crc32(u8){var c=0xFFFFFFFF;
+  for(var i=0;i<u8.length;i++)c=CRCT[(c^u8[i])&0xFF]^(c>>>8);
+  return (c^0xFFFFFFFF)>>>0;}
+function enc(s){return new TextEncoder().encode(s);}
+function zipStore(files){
+  var parts=[],cen=[],off=0;
+  function u16(v){return [v&255,(v>>8)&255];}
+  function u32(v){return [v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255];}
+  files.forEach(function(f){
+    var name=enc(f.name),data=f.data,crc=crc32(data);
+    var lh=[].concat(u32(0x04034b50),u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+                     u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0));
+    parts.push(new Uint8Array(lh),name,data);
+    cen.push([].concat(u32(0x02014b50),u16(20),u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+                       u32(crc),u32(data.length),u32(data.length),u16(name.length),
+                       u16(0),u16(0),u16(0),u16(0),u32(0),u32(off)));
+    cen.push(name);
+    off+=30+name.length+data.length;
+  });
+  var cenBytes=[],cenLen=0;
+  cen.forEach(function(c){
+    var a=(c instanceof Uint8Array)?c:new Uint8Array(c);
+    cenBytes.push(a);cenLen+=a.length;});
+  var eocd=new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),
+    u16(files.length),u16(files.length),u32(cenLen),u32(off),u16(0)));
+  return new Blob(parts.concat(cenBytes,[eocd]),
+    {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+function xesc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function colName(n){var s="";n++;while(n>0){var m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=(n-m-1)/26;}return s;}
+function sheetXml(rows){
+  var x='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+    '<sheetData>';
+  rows.forEach(function(r,ri){
+    x+='<row r="'+(ri+1)+'">';
+    r.forEach(function(v,ci){
+      var ref=colName(ci)+(ri+1);
+      if(typeof v==="number"&&isFinite(v)) x+='<c r="'+ref+'"><v>'+v+'</v></c>';
+      else if(v==="") x+='<c r="'+ref+'"/>';
+      else x+='<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+xesc(v)+'</t></is></c>';
+    });
+    x+='</row>';
+  });
+  return x+'</sheetData></worksheet>';
+}
+function downloadXLSX(){
+  var data=exportRows();
+  var meta=[
+    ["車城國小 南十字天文台 氣象站 — 資料說明"],[],
+    ["站名","車城國小 南十字天文台（Crux Observatory）"],
+    ["國際編號","IAU P38"],
+    ["座標","22.0747N 120.7152E，海拔 20 公尺"],
+    ["儀器","Davis Vantage Pro2 Plus"],
+    ["匯出區間",RANGE.from+" 至 "+RANGE.to],
+    ["匯出時間",new Date().toLocaleString("zh-TW")],
+    ["資料來源","https://cces026.github.io/cces-crux-weather/"],[],
+    ["注意事項"],
+    ["雨量計解析度","0.2 mm。毛毛雨小於一格不會被計數，所以雨量為 0 不代表完全沒下。"],
+    ["缺測","標示為「缺測」的日子代表當天沒有觀測紀錄，不是當天數值為零。"],
+    ["觀測間隔","2026-08-08 之前為 10 分鐘一筆（WeatherLink 封存），之後為 5 分鐘一筆。"],
+    ["時間基準","全部為台灣時間（UTC+8）。"],
+    ["風向","0 度為北、90 度為東、180 度為南、270 度為西；指的是風「從哪裡吹來」。"],
+    ["溫度單位","攝氏。欄位名稱寫 (C) 是為了避免特殊符號在部分軟體出現亂碼。"]
+  ];
+  var files=[
+    {name:"[Content_Types].xml",data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+      '<Default Extension="xml" ContentType="application/xml"/>'+
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
+      '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
+      '</Types>')},
+    {name:"_rels/.rels",data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'+
+      '</Relationships>')},
+    {name:"xl/workbook.xml",data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '+
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+
+      '<sheet name="每日資料" sheetId="1" r:id="rId1"/>'+
+      '<sheet name="資料說明" sheetId="2" r:id="rId2"/>'+
+      '</sheets></workbook>')},
+    {name:"xl/_rels/workbook.xml.rels",data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'+
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'+
+      '</Relationships>')},
+    {name:"xl/worksheets/sheet1.xml",data:enc(sheetXml(data))},
+    {name:"xl/worksheets/sheet2.xml",data:enc(sheetXml(meta))}
+  ];
+  saveBlob(zipStore(files),exportName("xlsx"));
+}
+document.getElementById("dlCsv").addEventListener("click",downloadCSV);
+document.getElementById("dlXlsx").addEventListener("click",downloadXLSX);
 
 /* ---------- links ----------
    內容來自同目錄的 links.json，可以直接在 GitHub 網頁上編輯，
