@@ -411,7 +411,8 @@
       Davis Vantage Pro2 Plus · 22.0747°N 120.7152°E 海拔 20 m</div>
     <ul>
       <li id="fUpdate">資料更新中…</li>
-      <li>觀測每 5 分鐘記錄一筆；本頁即時數值每 10 分鐘更新，曲線每小時更新。</li>
+      <li>觀測每 5 分鐘記錄一筆；即時數值每 5 分鐘發布一次，本頁每分鐘重新取得。
+        因 GitHub 的快取機制，實際看到的數值可能落後 5 分鐘左右——要真正即時的畫面請看直播。</li>
       <li><b>雨量計解析度 0.2 mm</b>：毛毛雨小於一格不會計數，所以現場在飄雨、數字仍是 0 是正常的，不是故障。</li>
       <li>本站是南十字天文台自行架設維運的氣象站，資料自動發布、開放自由取用。
         原始資料：<a href="https://github.com/cces026/cces-crux-weather/tree/data" target="_blank" rel="noopener">GitHub</a></li>
@@ -1526,7 +1527,10 @@ fetch("links.json?t="+Math.floor(Date.now()/60000),{cache:"no-store"})
   .then(function(d){if(d)renderLinks(d);})
   .catch(function(){});
 
-var LATEST_MS=5*60*1000;
+// 1 分鐘重取即時值。再快沒有意義：raw.githubusercontent 強制
+// Cache-Control: max-age=300，推送後各地快取節點仍會發舊內容最多 5 分鐘，
+// 而且查詢字串騙不過它（2026-08-31 實測）。曲線與每日資料維持 30 分鐘。
+var LATEST_MS=1*60*1000;
 function cycle(){setNext(LATEST_MS);return loadLatest();}
 cycle().then(loadRest);
 setInterval(cycle,LATEST_MS);
