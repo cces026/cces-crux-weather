@@ -122,6 +122,11 @@
   .legend{display:flex;gap:13px;flex-wrap:wrap;margin:0 0 4px;font-size:11.5px;color:var(--ink-2)}
   .legend i{display:inline-block;width:13px;height:2.5px;border-radius:2px;margin-right:5px;vertical-align:middle}
   svg{display:block;width:100%;height:auto;overflow:visible}
+  /* 熱力圖的格子有最小尺寸，塞不下就讓它自己橫向捲，不要把格子壓扁 */
+  .hscroll{overflow-x:auto;padding-bottom:4px}
+  .hscroll svg{width:auto;max-width:none}
+  .heatlegend{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin:9px 0 2px}
+  .heatlegend .sw{width:15px;height:11px;border-radius:2px;flex:none}
   svg text{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
   .tip{position:absolute;pointer-events:none;display:none;z-index:9;background:var(--surface);
     border:1px solid var(--hair);border-radius:9px;box-shadow:var(--shadow);padding:7px 11px;
@@ -366,6 +371,20 @@
   </div>
 
   <div class="sec-wrap">
+    <h2 class="sec">降雨型態<span style="font-weight:400;color:var(--muted)"> — 跟著上方「每日回顧」的日期範圍</span></h2>
+    <div class="charts">
+      <div class="card wide"><h3>雨量日曆</h3>
+        <p class="cs">每一格是一天，顏色越深雨越大</p>
+        <div class="hscroll"><div id="cCal"></div></div>
+        <div class="tip"></div></div>
+      <div class="card wide"><h3>一天之中什麼時候下雨</h3>
+        <p class="cs" id="hourSub">縱軸是一天的 24 小時，橫軸是日期。午後雷陣雨會呈現成一條橫帶</p>
+        <div class="hscroll"><div id="cHourMap"></div></div>
+        <div class="tip"></div></div>
+    </div>
+  </div>
+
+  <div class="sec-wrap">
     <h2 class="sec">測站位置</h2>
     <div class="mapcard">
       <div class="mapwrap">
@@ -538,6 +557,9 @@ function lineChart(host,rows,series,opt){
   var padv=(mx-mn)*0.12;mn-=padv;mx+=padv;
   if(opt.zero)mn=0;
   if(opt.minFloor!==undefined&&mn<opt.minFloor)mn=opt.minFloor;
+  // 固定刻度：風向一定要用滿 0–360，否則羅盤方位標不上去
+  if(opt.ymin!==undefined)mn=opt.ymin;
+  if(opt.ymax!==undefined)mx=opt.ymax;
   var Y=function(v){return M.t+ih-(v-mn)/(mx-mn)*ih;};
   var X=function(i){return M.l+(rows.length<2?iw/2:i/(rows.length-1)*iw);};
 
@@ -569,7 +591,7 @@ function lineChart(host,rows,series,opt){
     if(i<4)svg.appendChild(el("line",{x1:M.l,x2:W-M.r,y1:y,y2:y,
       stroke:css("--hair"),"stroke-width":1}));
     var t=el("text",{x:M.l-7,y:y+4,"text-anchor":"end","font-size":10.5,fill:css("--muted")});
-    t.textContent=(mx-mn)>=20?Math.round(v):(Math.round(v*10)/10).toFixed(1);
+    t.textContent=opt.yfmt?opt.yfmt(v):((mx-mn)>=20?Math.round(v):(Math.round(v*10)/10).toFixed(1));
     svg.appendChild(t);
   }
   var step=Math.max(1,Math.floor(rows.length/6));
@@ -604,9 +626,17 @@ function lineChart(host,rows,series,opt){
         svg.appendChild(el("path",{d:ad,fill:"url(#"+gid+")"}));
       }
     }
-    if(d)svg.appendChild(el("path",{d:d,fill:"none",stroke:s.color,"stroke-width":2,
+    if(opt.dots){
+      // 角度這種「循環量」不能連線：355°→5° 只轉了 10 度，
+      // 連起來卻會從圖頂直墜到圖底，看起來像儀器抽風。改點狀呈現。
+      rows.forEach(function(r,i){
+        var v=r.vals[si];if(v===null)return;
+        svg.appendChild(el("circle",{cx:X(i),cy:Y(v),r:1.9,fill:s.color,opacity:.75}));
+      });
+    }
+    else if(d)svg.appendChild(el("path",{d:d,fill:"none",stroke:s.color,"stroke-width":2,
       "stroke-linejoin":"round","stroke-linecap":"round"}));
-    for(var k=rows.length-1;k>=0;k--){
+    if(!opt.dots)for(var k=rows.length-1;k>=0;k--){
       if(rows[k].vals[si]!==null){
         svg.appendChild(el("circle",{cx:X(k),cy:Y(rows[k].vals[si]),r:4,fill:s.color,
           stroke:css("--surface"),"stroke-width":2}));
@@ -733,6 +763,159 @@ function barChart(host,items,opt){
     hit.addEventListener("blur",function(){tip.style.display="none";});
   });
   host.appendChild(svg);
+}
+
+/* ================= 熱力圖 =================
+   連續量用單一色相由淺到深（不用彩虹——彩虹會讓人誤判大小順序）。
+   這是 dataviz 的 sequential 規則，也是氣候圖表的慣例。 */
+var RAMP=["#cde2fb","#9ec5f4","#6da7ec","#3987e5","#256abf","#184f95","#0d366b"];
+function rampColor(v,max){
+  if(!(v>0))return null;                       // 0 用底色，不進色階
+  var t=Math.sqrt(v/max);                      // 開根號：小雨才不會全部糊成同一色
+  var i=Math.min(RAMP.length-1,Math.floor(t*RAMP.length));
+  return RAMP[i];
+}
+function heatLegend(host,max,unit){
+  var w=document.createElement("div");w.className="heatlegend";
+  var a=document.createElement("span");a.textContent="少";w.appendChild(a);
+  RAMP.forEach(function(c){
+    var s=document.createElement("span");s.className="sw";s.style.background=c;w.appendChild(s);});
+  var b=document.createElement("span");
+  b.textContent="多（最大 "+fmt(max,1)+" "+unit+"）";w.appendChild(b);
+  host.appendChild(w);
+}
+function heatTip(card,tip,rect,lines){
+  tip.textContent="";
+  lines.forEach(function(l,i){
+    var d=document.createElement("div");
+    if(i===0){d.className="tt";d.textContent=l;}
+    else{var b=document.createElement("b");b.textContent=l;d.className="tr";d.appendChild(b);}
+    tip.appendChild(d);});
+  tip.style.display="block";
+  var cb=card.getBoundingClientRect();
+  var x=rect.left-cb.left+rect.width/2,tw=tip.offsetWidth;
+  tip.style.left=Math.max(6,Math.min(x-tw/2,cb.width-tw-6))+"px";
+  tip.style.top=Math.max(4,rect.top-cb.top-tip.offsetHeight-6)+"px";
+}
+
+/* 雨量日曆：一格一天，直向是星期、橫向是週 */
+function drawCalendar(){
+  var host=document.getElementById("cCal");if(!host)return;
+  host.textContent="";
+  var card=host.closest(".card"),tip=card.querySelector(".tip");
+  var items=dayItems();if(!items.length)return;
+  var CELL=15,GAP=3,LEFT=30,TOP=18;
+  var first=parseD(items[0].d);
+  var startOff=(first.getDay()+6)%7;            // 週一為第一列
+  var weeks=Math.ceil((items.length+startOff)/7);
+  var W=LEFT+weeks*(CELL+GAP),H=TOP+7*(CELL+GAP)+4;
+  var svg=el("svg",{viewBox:"0 0 "+W+" "+H,width:W,height:H,role:"img"});
+  svg.setAttribute("aria-label","每日雨量日曆");
+  var max=0;items.forEach(function(i){if(i.e&&i.e.rain>max)max=i.e.rain;});
+  if(max<=0)max=1;
+
+  ["一","二","三","四","五","六","日"].forEach(function(d,r){
+    if(r%2)return;
+    var t=el("text",{x:LEFT-7,y:TOP+r*(CELL+GAP)+CELL-3,"text-anchor":"end",
+      "font-size":10,fill:css("--muted")});
+    t.textContent=d;svg.appendChild(t);
+  });
+  var lastMonth="";
+  items.forEach(function(it,n){
+    var pos=n+startOff,col=Math.floor(pos/7),row=pos%7;
+    var x=LEFT+col*(CELL+GAP),y=TOP+row*(CELL+GAP);
+    var mo=it.d.slice(0,7);
+    if(mo!==lastMonth&&row<=1){
+      var mt=el("text",{x:x,y:TOP-6,"font-size":10,fill:css("--muted")});
+      mt.textContent=(+it.d.slice(5,7))+"月";svg.appendChild(mt);lastMonth=mo;
+    }
+    var v=it.e?it.e.rain:null;
+    var c=(v===null)?null:rampColor(v,max);
+    var r=el("rect",{x:x,y:y,width:CELL,height:CELL,rx:3,
+      fill:c||css("--surface-2"),
+      stroke:(v===null)?css("--hair"):"none","stroke-width":1,
+      style:"cursor:pointer",tabindex:0,role:"graphics-symbol"});
+    r.setAttribute("aria-label",zhDate(it.d)+(v===null?" 缺測":" 雨量 "+fmt(v,1)+" 毫米"));
+    function show(){heatTip(card,tip,r.getBoundingClientRect(),
+      [zhDateW(it.d),(v===null)?"缺測":(fmt(v,1)+" mm")]);}
+    r.addEventListener("pointerenter",show);
+    r.addEventListener("focus",show);
+    r.addEventListener("pointerleave",function(){tip.style.display="none";});
+    r.addEventListener("blur",function(){tip.style.display="none";});
+    svg.appendChild(r);
+  });
+  host.appendChild(svg);
+  heatLegend(host,max,"mm");
+}
+
+/* 一天之中什麼時候下雨：縱軸 24 小時、橫軸日期。
+   刻意不用「星期幾」當軸——氣象上那沒有物理意義，
+   拿它當軸只會讓人看到雜訊誤以為是規律。 */
+function drawHourMap(){
+  var host=document.getElementById("cHourMap");if(!host)return;
+  host.textContent="";
+  var card=host.closest(".card"),tip=card.querySelector(".tip");
+  var items=dayItems();if(!items.length)return;
+  var CW=Math.max(7,Math.min(16,Math.floor(760/items.length))),GAP=1,CH=11,LEFT=34,TOP=16;
+  var W=LEFT+items.length*(CW+GAP),H=TOP+24*(CH+1)+6;
+  var svg=el("svg",{viewBox:"0 0 "+W+" "+H,width:W,height:H,role:"img"});
+  svg.setAttribute("aria-label","逐時雨量分布");
+  var max=0;
+  items.forEach(function(i){
+    if(!i.e||!i.e.rain_h)return;
+    Object.keys(i.e.rain_h).forEach(function(h){if(i.e.rain_h[h]>max)max=i.e.rain_h[h];});
+  });
+  if(max<=0)max=1;
+
+  for(var h=0;h<24;h+=3){
+    var t=el("text",{x:LEFT-6,y:TOP+h*(CH+1)+CH-1,"text-anchor":"end",
+      "font-size":9.5,fill:css("--muted")});
+    t.textContent=(h<10?"0":"")+h+":00";svg.appendChild(t);
+  }
+  var lastMo="";
+  items.forEach(function(it,n){
+    var x=LEFT+n*(CW+GAP);
+    var mo=it.d.slice(0,7);
+    if(mo!==lastMo){
+      var mt=el("text",{x:x,y:TOP-5,"font-size":9.5,fill:css("--muted")});
+      mt.textContent=(+it.d.slice(5,7))+"月";svg.appendChild(mt);lastMo=mo;
+    }
+    for(var hh=0;hh<24;hh++){
+      var y=TOP+hh*(CH+1);
+      var v=(it.e&&it.e.rain_h)?(it.e.rain_h[String(hh)]||0):0;
+      var miss=!it.e;
+      var c=miss?null:rampColor(v,max);
+      var r=el("rect",{x:x,y:y,width:CW,height:CH,rx:1.5,
+        fill:c||(miss?css("--hair"):css("--surface-2")),
+        opacity:(miss?.5:1),style:"cursor:pointer",tabindex:-1});
+      (function(dd,hour,val,miss2,rect){
+        function show(){heatTip(card,tip,rect.getBoundingClientRect(),
+          [zhDate(dd)+" "+(hour<10?"0":"")+hour+":00–"+(hour<10?"0":"")+hour+":59",
+           miss2?"缺測":(fmt(val,1)+" mm")]);}
+        rect.addEventListener("pointerenter",show);
+        rect.addEventListener("pointerleave",function(){tip.style.display="none";});
+      })(it.d,hh,v,miss,r);
+      svg.appendChild(r);
+    }
+  });
+  host.appendChild(svg);
+  heatLegend(host,max,"mm/小時");
+
+  // 順手把「幾點最容易下雨」算出來寫在說明裡——這才是這張圖的重點
+  var byHour=new Array(24).fill(0),days=0;
+  items.forEach(function(i){
+    if(!i.e)return;days++;
+    if(!i.e.rain_h)return;
+    Object.keys(i.e.rain_h).forEach(function(h){byHour[+h]+=i.e.rain_h[h];});
+  });
+  var tot=byHour.reduce(function(a,b){return a+b;},0);
+  if(tot>0){
+    var peak=byHour.indexOf(Math.max.apply(null,byHour));
+    var aft=byHour.slice(12,20).reduce(function(a,b){return a+b;},0);
+    document.getElementById("hourSub").textContent=
+      "縱軸是一天的 24 小時，橫軸是日期。這段期間雨量最集中在 "+peak+" 時，"+
+      "中午到晚上八點之間佔了全部雨量的 "+Math.round(aft/tot*100)+"%";
+  }
 }
 
 /* ---------- compass ---------- */
@@ -862,6 +1045,87 @@ function resample(rows,targetN){
   return out;
 }
 
+/* 取某段日期的逐筆資料。
+   月檔一天才推一次，所以尾端會缺最近幾小時——用 recent.json（48 小時、每輪都推）
+   補上去再去重。少了這一步，長視窗的最右邊會憑空少一截。 */
+function rowsForRange(fromDay,toDay){
+  var keys=monthKeysBetween(fromDay,toDay);
+  return Promise.all(keys.map(fetchMonth)).then(function(sets){
+    var all=[];
+    sets.forEach(function(s){all=all.concat(s);});
+    if(RECENT&&RECENT.rows&&RECENT.rows.length){
+      var ri={};RECENT.fields.forEach(function(f,i){ri[f]=i;});
+      var seen={};
+      all.forEach(function(r){seen[r[0]]=1;});
+      RECENT.rows.forEach(function(r){
+        if(seen[r[ri.t]])return;
+        all.push(RF.map(function(f){
+          var v=(ri[f]===undefined)?null:r[ri[f]];
+          return (v===undefined)?null:v;}));
+      });
+    }
+    all.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});
+    var lo=fromDay+"T00:00",hi=toDay+"T23:59";
+    return all.filter(function(r){return r[0]>=lo&&r[0]<=hi;});
+  });
+}
+
+/* 依間隔分桶彙總。各欄位規則不同：雨量加總、陣風與時雨率取最大、
+   其餘取平均，風向一定要用向量平均（角度不能直接平均）。 */
+var INTERVALS=[["raw","原始"],["hour","每小時"],["day","每日"],["week","每週"],["month","每月"]];
+function bucketKey(t,iv){
+  if(iv==="hour")return t.slice(0,13)+":00";
+  if(iv==="day") return t.slice(0,10)+"T00:00";
+  if(iv==="month")return t.slice(0,7)+"-01T00:00";
+  if(iv==="week"){
+    var d=new Date(t.slice(0,10)+"T00:00:00Z");
+    d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));   // 對齊到週一
+    return d.toISOString().slice(0,10)+"T00:00";
+  }
+  return t;
+}
+function aggregate(rows,iv){
+  if(iv==="raw"||!rows.length)return rows;
+  var map={},order=[];
+  rows.forEach(function(r){
+    var k=bucketKey(r[0],iv);
+    if(!map[k]){map[k]=[];order.push(k);}
+    map[k].push(r);
+  });
+  return order.map(function(k){
+    var b=map[k],o=new Array(RF.length);o[0]=k;
+    function agg(i,how){
+      var v=[];b.forEach(function(r){if(r[i]!==null&&r[i]!==undefined)v.push(r[i]);});
+      if(!v.length)return null;
+      if(how==="sum")return Math.round(v.reduce(function(a,c){return a+c;},0)*10)/10;
+      if(how==="max")return Math.max.apply(null,v);
+      return Math.round(v.reduce(function(a,c){return a+c;},0)/v.length*10)/10;
+    }
+    o[1]=agg(1);o[2]=agg(2);o[3]=agg(3);o[4]=agg(4);o[5]=agg(5);o[6]=agg(6,"max");
+    var sx=0,sy=0,n=0;
+    b.forEach(function(r){
+      if(r[7]===null||r[7]===undefined)return;
+      var a=r[7]*Math.PI/180;sx+=Math.sin(a);sy+=Math.cos(a);n++;});
+    o[7]=n?((Math.atan2(sx,sy)*180/Math.PI+360)%360):null;
+    o[8]=agg(8,"sum");o[9]=agg(9,"max");o[10]=agg(10);o[11]=agg(11);
+    return o;
+  });
+}
+/* 風向的統計：主要風向要用向量平均，最大最小平均對角度沒有意義。 */
+function dirStats(vals){
+  var sx=0,sy=0,n=0,bins=new Array(16).fill(0);
+  vals.forEach(function(v){
+    if(v===null||v===undefined)return;
+    var a=v*Math.PI/180;sx+=Math.sin(a);sy+=Math.cos(a);n++;
+    bins[Math.round((v%360)/22.5)%16]++;
+  });
+  if(!n)return null;
+  var mean=(Math.atan2(sx,sy)*180/Math.PI+360)%360;
+  var R=Math.sqrt(sx*sx+sy*sy)/n;           // 集中度：1=很穩定，0=亂吹
+  var top=bins.indexOf(Math.max.apply(null,bins));
+  return {mean:mean,steady:R,top:top*22.5,topPct:Math.round(bins[top]/n*100),n:n};
+}
+
 function winLabel(){
   if(WIN==="all")return "全部紀錄";
   return (WIN<48)?(WIN+" 小時"):((WIN===48)?"48 小時":(WIN/24)+" 天");
@@ -896,13 +1160,7 @@ function buildWindow(){
   host.classList.add("busy");
   stat.className="winstat load";
   stat.textContent="載入中…";
-  var keys=monthKeysBetween(from,lastDay);
-  return Promise.all(keys.map(fetchMonth)).then(function(sets){
-    var all=[];
-    sets.forEach(function(s){all=all.concat(s);});
-    all.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});
-    var cutStr=from+"T00:00";
-    all=all.filter(function(r){return r[0]>=cutStr;});
+  return rowsForRange(from,lastDay).then(function(all){
     var raw=all.length;
     WINROWS=resample(all,TARGET_POINTS);
     WINFIELDS=RF;
@@ -1321,6 +1579,9 @@ function drawDaily(){
       extra:!e?"缺測":(e.t_avg!==undefined?("平均 "+e.t_avg+"°C"):null),
       aria:zhDate(i.d)+(e?(" 最低 "+fmt(e.t_min,1)+" 最高 "+fmt(e.t_max,1)+" 度"):" 缺測")};}),
     {color:css("--s2"),unit:"°C",range:true,h:210,aria:"每日氣溫範圍"});
+
+  drawCalendar();
+  drawHourMap();
 }
 
 function renderTable(){
@@ -1351,8 +1612,71 @@ function chartBox(title,sub){
   var tip=document.createElement("div");tip.className="tip";b.appendChild(tip);
   return {box:b,host:host};
 }
-/* 詳細頁裡的區間控制項。跟主頁那組共用同一個 RANGE 狀態，
-   在任一處改動，另一處與所有圖表、表格都會同步。 */
+/* ===== 詳細頁自己的檢視狀態 =====
+   使用者反映「要跳出去改範圍很奇怪」，所以詳細頁有自己的日期與間隔，
+   跟主頁的視窗互不干擾。開啟時以主頁目前的視窗當預設值。 */
+var SV={from:null,to:null,iv:"raw",rows:null,busy:false};
+
+function svDefaults(){
+  var b=dayBounds();if(!b)return;
+  var to=b.last;
+  var days=(WIN==="all")?9999:Math.max(1,Math.ceil(WIN/24));
+  var from=fmtD(new Date(parseD(to).getTime()-(days-1)*86400000));
+  if(from<b.first)from=b.first;
+  SV.from=from;SV.to=to;
+  // 跨度大就別預設用原始資料，不然一開就是幾萬點
+  var span=(parseD(SV.to)-parseD(SV.from))/86400000+1;
+  SV.iv=(span<=3)?"raw":(span<=45?"hour":"day");
+}
+function svLoad(){
+  SV.busy=true;
+  return rowsForRange(SV.from,SV.to).then(function(rows){
+    SV.rows=aggregate(rows,SV.iv);
+    SV.raw=rows.length;
+    SV.busy=false;
+    return SV.rows;
+  });
+}
+function svControls(onchange){
+  var b=dayBounds();
+  var wrap=document.createElement("div");wrap.className="rangebar sheetrange";
+
+  var l1=document.createElement("span");l1.className="rlab";l1.textContent="日期";
+  wrap.appendChild(l1);
+  [["from","從"],["to","到"]].forEach(function(w){
+    var lab=document.createElement("label");lab.className="rlab";
+    lab.appendChild(document.createTextNode(w[1]+" "));
+    var inp=document.createElement("input");inp.type="date";
+    inp.min=b.first;inp.max=b.last;inp.value=SV[w[0]];
+    inp.setAttribute("data-sv",w[0]);
+    inp.addEventListener("change",function(){
+      var f=(w[0]==="from")?inp.value:SV.from,t=(w[0]==="to")?inp.value:SV.to;
+      if(!f||!t)return;
+      if(f>t){var tmp=f;f=t;t=tmp;}
+      SV.from=(f<b.first)?b.first:f;SV.to=(t>b.last)?b.last:t;
+      onchange("date");
+    });
+    lab.appendChild(inp);wrap.appendChild(lab);
+  });
+
+  var sep=document.createElement("span");sep.className="rsep";sep.setAttribute("aria-hidden","true");
+  wrap.appendChild(sep);
+  var l2=document.createElement("span");l2.className="rlab";l2.textContent="間隔";
+  wrap.appendChild(l2);
+  INTERVALS.forEach(function(p){
+    var btn=document.createElement("button");
+    btn.type="button";btn.className="rb";btn.setAttribute("data-iv",p[0]);
+    btn.textContent=p[1];
+    btn.setAttribute("aria-pressed",SV.iv===p[0]?"true":"false");
+    btn.addEventListener("click",function(){SV.iv=p[0];onchange("iv");});
+    wrap.appendChild(btn);
+  });
+  var st=document.createElement("span");st.className="winstat";st.id="svstat";
+  wrap.appendChild(st);
+  return wrap;
+}
+
+/* 詳細頁裡的「每日回顧」區間控制項。跟主頁那組共用同一個 RANGE 狀態。 */
 var RANGE_PRESETS=[["7","最近 7 天"],["30","30 天"],["90","90 天"],["month","本月"],["all","全部"]];
 function rangeControls(){
   var b=dayBounds();
@@ -1396,6 +1720,67 @@ function statBox(k,v,unit){
   if(unit){var s=document.createElement("small");s.textContent=unit;vv.appendChild(s);}
   d.appendChild(vv);return d;
 }
+var SVKEY=null,SVHOST=null,SVSTATS=null;
+function svRefresh(){
+  if(!SVKEY||!SVHOST)return;
+  var m=METAK[SVKEY],k=SVKEY,host=SVHOST,stats=SVSTATS;
+  var st=document.getElementById("svstat");
+  if(st){st.className="winstat load";st.textContent="載入中…";}
+  document.querySelectorAll(".sheetrange .rb[data-iv]").forEach(function(b){
+    b.setAttribute("aria-pressed",b.getAttribute("data-iv")===SV.iv?"true":"false");});
+
+  return svLoad().then(function(rows){
+    var idx={};RF.forEach(function(f,i){idx[f]=i;});
+    var vals=rows.map(function(r){var v=r[idx[m.rf]];return (v===null||v===undefined)?null:v;});
+    var ok=vals.filter(function(v){return v!==null;});
+    var ivName=(INTERVALS.filter(function(p){return p[0]===SV.iv;})[0]||["","原始"])[1];
+    if(st){st.className="winstat";
+      st.textContent=SV.raw?(SV.raw.toLocaleString()+" 筆原始"+
+        (SV.iv==="raw"?"":("　→ "+ivName+" "+rows.length+" 點")))
+        :"這段期間沒有資料";}
+
+    stats.textContent="";
+    if(ok.length){
+      if(k==="dir"){
+        // 角度是循環量：最大最小平均都沒有意義，要用向量統計
+        var ds=dirStats(vals);
+        if(ds){
+          stats.appendChild(statBox("主要風向",dirZh(ds.mean)||"—",""));
+          stats.appendChild(statBox("平均方位",Math.round(ds.mean)+"°",""));
+          stats.appendChild(statBox("最常出現",(dirZh(ds.top)||"—")+" "+ds.topPct+"%",""));
+          stats.appendChild(statBox("風向穩定度",Math.round(ds.steady*100)+"%",""));
+        }
+      }else{
+        var mx=Math.max.apply(null,ok),mn=Math.min.apply(null,ok);
+        var av=ok.reduce(function(a,b){return a+b;},0)/ok.length;
+        var mxi=vals.indexOf(mx);
+        stats.appendChild(statBox("區間最高",fmt(mx,m.dec),m.unit));
+        stats.appendChild(statBox("出現時間",mdhm(rows[mxi][0]),""));
+        stats.appendChild(statBox("區間最低",fmt(mn,m.dec),m.unit));
+        stats.appendChild(statBox("區間平均",fmt(av,m.dec),m.unit));
+      }
+    }
+
+    var spanD=(parseD(SV.to)-parseD(SV.from))/86400000+1;
+    var xf=(spanD<=2)?function(s){return hhmm(s);}
+          :(spanD<=9)?function(s){return (+s.slice(5,7))+"/"+(+s.slice(8,10))+" "+s.slice(11,13);}
+          :function(s){return (+s.slice(5,7))+"/"+(+s.slice(8,10));};
+    var pts=rows.map(function(r,i){return {x:r[0],vals:[vals[i]]};});
+    lineChart(host,pts,[{color:css("--s1"),label:m.name}],{
+      unit:m.unit,dec:m.dec,
+      area:(k!=="dir"),dots:(k==="dir"),
+      zero:(k==="rate"||k==="solar"||k==="uv"||k==="wind"||k==="gust"),
+      night:(spanD<=40),
+      ymin:(k==="dir")?0:undefined, ymax:(k==="dir")?360:undefined,
+      yfmt:(k==="dir")?function(v){
+        return ({0:"北",90:"東",180:"南",270:"西",360:"北"})[Math.round(v)]||"";}:null,
+      vfmt:(k==="dir")?function(v){
+        return v===null?"—":((dirZh(v)||"")+" "+Math.round(v)+"°");}:null,
+      xfmt:xf,tipTitle:function(s){return mdhm(s);},
+      aria:m.name+" "+SV.from+" 至 "+SV.to});
+  });
+}
+
 function openDetail(k,keepScroll){
   var m=METAK[k];if(!m||!LATEST)return;
   CURKEY=k;
@@ -1416,41 +1801,14 @@ function openDetail(k,keepScroll){
   var stats=document.getElementById("shStats");stats.textContent="";
   var charts=document.getElementById("shCharts");charts.textContent="";
 
-  // 逐筆圖表跟著上方的時間視窗走，不再寫死 48 小時
-  var SRC=(WINROWS&&WINROWS.length)?WINROWS:((RECENT&&RECENT.rows)||null);
-  var SF=(WINROWS&&WINROWS.length)?(WINFIELDS||RF):((RECENT&&RECENT.fields)||RF);
-  var WL=winLabel();
-  var idx=null,vals=null;
-  if(SRC&&SRC.length&&m.rf){
-    idx={};SF.forEach(function(f,i){idx[f]=i;});
-    if(idx[m.rf]!==undefined){
-      vals=SRC.map(function(r){var v=r[idx[m.rf]];return (v===null||v===undefined)?null:v;});
-      var ok=vals.filter(function(v){return v!==null;});
-      if(ok.length){
-        var mx=Math.max.apply(null,ok),mn=Math.min.apply(null,ok);
-        var av=ok.reduce(function(a,b){return a+b;},0)/ok.length;
-        var mxi=vals.indexOf(mx);
-        stats.appendChild(statBox(WL+"最高",fmt(mx,m.dec),m.unit));
-        stats.appendChild(statBox("出現時間",mdhm(SRC[mxi][idx.t]),""));
-        stats.appendChild(statBox(WL+"最低",fmt(mn,m.dec),m.unit));
-        stats.appendChild(statBox(WL+"平均",fmt(av,m.dec),m.unit));
-      }
-    }
-  }
-
-  if(vals){
-    var cb=chartBox(WL,m.unit?("單位："+m.unit+"　範圍可在上方「逐筆變化」調整"):"範圍可在上方「逐筆變化」調整");
+  // 逐筆圖表有自己的日期與間隔控制項，不必關掉彈窗跑去外面改
+  if(m.rf){
+    if(!keepScroll||!SV.from)svDefaults();
+    var cb=chartBox("逐筆資料","");
+    cb.box.insertBefore(svControls(function(){svRefresh();}),cb.host);
     charts.appendChild(cb.box);
-    var rows=SRC.map(function(r,i){return {x:r[idx.t],vals:[vals[i]]};});
-    lineChart(cb.host,rows,[{color:css("--s1"),label:m.name}],
-      {unit:m.unit,dec:m.dec,area:(k!=="dir"),
-       zero:(k==="rate"||k==="solar"||k==="uv"||k==="wind"||k==="gust"),
-       vfmt:(k==="dir")?function(v){
-         return v===null?"—":((dirZh(v)||"")+" "+Math.round(v)+"°");}:null,
-       xfmt:(WIN==="all"||WIN>36)?function(s){return (+s.slice(5,7))+"/"+(+s.slice(8,10));}
-                                 :function(s){return hhmm(s);},
-       tipTitle:function(s){return mdhm(s);},
-       aria:m.name+" "+WL});
+    SVKEY=k;SVHOST=cb.host;SVSTATS=stats;
+    svRefresh();
   }
 
   if(m.daily&&DAILY&&DAILY.days&&DAILY.days.length){
