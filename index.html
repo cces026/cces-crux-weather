@@ -175,6 +175,9 @@
     .sheetrange .rlab{font-size:11px;gap:3px}
     .sheetrange .rlab input{font-size:11.5px;padding:2px 5px}
   }
+  .winstat{font-size:12px;color:var(--muted);margin-left:4px}
+  .winstat.load{color:var(--s1)}
+  .charts.busy{opacity:.55}
   .rb.dl{border-color:var(--s1);color:var(--s1)}
   .rb.dl:hover{background:var(--s1);color:#fff}
   .rsum{font-size:12.5px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:4px 18px}
@@ -290,7 +293,17 @@
   </div>
 
   <div class="sec-wrap">
-    <h2 class="sec">近 48 小時變化</h2>
+    <h2 class="sec" id="intradaySec">逐筆變化</h2>
+    <div class="rangebar" id="winbar" role="group" aria-label="曲線時間範圍">
+      <button class="rb" type="button" data-w="6">6 小時</button>
+      <button class="rb" type="button" data-w="12">12 小時</button>
+      <button class="rb" type="button" data-w="24">24 小時</button>
+      <button class="rb" type="button" data-w="48">48 小時</button>
+      <button class="rb" type="button" data-w="168">7 天</button>
+      <button class="rb" type="button" data-w="720">30 天</button>
+      <button class="rb" type="button" data-w="all">全部</button>
+      <span class="winstat" id="winstat"></span>
+    </div>
     <div class="charts" id="charts">
       <div class="card"><h3>氣溫／露點</h3><p class="cs">°C</p>
         <div class="legend"><span><i style="background:var(--s2)"></i>氣溫</span><span><i style="background:var(--s1)"></i>露點</span></div>
@@ -484,6 +497,27 @@ function niceMax(v,floor){
   return Math.ceil(v/100)*100;
 }
 
+/* 日出日落（NOAA 近似式）。本站 22.0747°N 120.7152°E，時區 UTC+8。
+   用來在逐筆曲線上畫夜間淡帶——對天文台來說，天黑的時段本來就是重點。 */
+var LATD=22.0747,LOND=120.7152,TZMIN=480;
+function sunTimes(d){
+  var start=new Date(d.getFullYear(),0,0);
+  var n=Math.floor((d-start)/86400000);
+  var g=2*Math.PI/365*(n-1+0.5);
+  var eq=229.18*(0.000075+0.001868*Math.cos(g)-0.032077*Math.sin(g)
+        -0.014615*Math.cos(2*g)-0.040849*Math.sin(2*g));
+  var dec=0.006918-0.399912*Math.cos(g)+0.070257*Math.sin(g)
+         -0.006758*Math.cos(2*g)+0.000907*Math.sin(2*g)
+         -0.002697*Math.cos(3*g)+0.00148*Math.sin(3*g);
+  var la=LATD*Math.PI/180;
+  var c=Math.cos(90.833*Math.PI/180)/(Math.cos(la)*Math.cos(dec))-Math.tan(la)*Math.tan(dec);
+  if(c>1)return {rise:0,set:0};        // 永夜
+  if(c<-1)return {rise:0,set:1440};    // 永晝
+  var ha=Math.acos(c)*180/Math.PI;
+  return {rise:720-4*(LOND+ha)-eq+TZMIN, set:720-4*(LOND-ha)-eq+TZMIN};
+}
+var GRAD_N=0;
+
 /* ---------- generic chart ---------- */
 /* series: [{key,color,label}] ; xs: array of labels ; rows: array of {x, vals:[..]} */
 function lineChart(host,rows,series,opt){
@@ -495,6 +529,7 @@ function lineChart(host,rows,series,opt){
   var svg=el("svg",{viewBox:"0 0 "+W+" "+H,preserveAspectRatio:"none",role:"img"});
   svg.setAttribute("aria-label",opt.aria||"折線圖");
   svg.style.height=H+"px";
+  var defs=el("defs",{});svg.appendChild(defs);
   var vals=[];rows.forEach(function(r){r.vals.forEach(function(v){if(v!==null)vals.push(v);});});
   if(!vals.length){host.appendChild(svg);return;}
   var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
@@ -506,9 +541,33 @@ function lineChart(host,rows,series,opt){
   var Y=function(v){return M.t+ih-(v-mn)/(mx-mn)*ih;};
   var X=function(i){return M.l+(rows.length<2?iw/2:i/(rows.length-1)*iw);};
 
+  // 夜間淡帶：本站是天文台，「什麼時候天黑」本身就是有用的資訊，
+  // 也讓白天的日照／紫外線曲線一眼看得出為什麼歸零。
+  if(opt.night!==false&&rows.length>1&&/^\d{4}-\d{2}-\d{2}T/.test(String(rows[0].x))){
+    var t0=new Date(rows[0].x+":00"),t1=new Date(rows[rows.length-1].x+":00");
+    var totalMs=t1-t0;
+    if(totalMs>0&&totalMs<=1000*3600*24*40){
+      var day=new Date(t0.getFullYear(),t0.getMonth(),t0.getDate());
+      for(var dd=0;dd<42;dd++){
+        var st=sunTimes(day);
+        // 畫「日落到隔天日出」這段
+        var a=new Date(day.getTime()+st.set*60000);
+        var b=new Date(day.getTime()+86400000+sunTimes(new Date(day.getTime()+86400000)).rise*60000);
+        var xa=Math.max(0,(a-t0)/totalMs),xb=Math.min(1,(b-t0)/totalMs);
+        if(xb>xa){
+          svg.appendChild(el("rect",{x:M.l+xa*iw,y:M.t,width:(xb-xa)*iw,height:ih,
+            fill:css("--ink"),opacity:.045}));
+        }
+        day=new Date(day.getTime()+86400000);
+        if(day>t1)break;
+      }
+    }
+  }
   for(var i=0;i<=4;i++){
     var v=mn+(mx-mn)*i/4,y=M.t+ih-ih*i/4;
-    svg.appendChild(el("line",{x1:M.l,x2:W-M.r,y1:y,y2:y,stroke:css("--hair"),"stroke-width":1}));
+    // 最上面那條格線省掉——它緊貼標題區，是視覺噪音而不是刻度
+    if(i<4)svg.appendChild(el("line",{x1:M.l,x2:W-M.r,y1:y,y2:y,
+      stroke:css("--hair"),"stroke-width":1}));
     var t=el("text",{x:M.l-7,y:y+4,"text-anchor":"end","font-size":10.5,fill:css("--muted")});
     t.textContent=(mx-mn)>=20?Math.round(v):(Math.round(v*10)/10).toFixed(1);
     svg.appendChild(t);
@@ -528,11 +587,22 @@ function lineChart(host,rows,series,opt){
       d+=(open?"L":"M")+X(i)+","+Y(v);open=true;
     });
     if(opt.area&&si===0){
-      var ad="",started=false,lastI=0;
+      var ad="",started=false,lastI=0,firstI=0;
       rows.forEach(function(r,i){var v=r.vals[si];if(v===null)return;
+        if(!started)firstI=i;
         ad+=(started?"L":"M")+X(i)+","+Y(v);started=true;lastI=i;});
-      if(started){ad+="L"+X(lastI)+","+(M.t+ih)+"L"+X(0)+","+(M.t+ih)+"Z";
-        svg.appendChild(el("path",{d:ad,fill:s.color,opacity:.10}));}
+      if(started){
+        ad+="L"+X(lastI)+","+(M.t+ih)+"L"+X(firstI)+","+(M.t+ih)+"Z";
+        // 漸層填色：從線條往下淡出。平塗一個定值會讓整塊顯得死板，
+        // 漸層才有「量體」的感覺，也不會蓋掉底下的夜間帶。
+        var gid="g"+(GRAD_N++);
+        var lg=el("linearGradient",{id:gid,x1:0,y1:0,x2:0,y2:1});
+        var s1=el("stop",{offset:"0%","stop-color":s.color,"stop-opacity":.22});
+        var s2=el("stop",{offset:"100%","stop-color":s.color,"stop-opacity":.01});
+        lg.appendChild(s1);lg.appendChild(s2);
+        defs.appendChild(lg);
+        svg.appendChild(el("path",{d:ad,fill:"url(#"+gid+")"}));
+      }
     }
     if(d)svg.appendChild(el("path",{d:d,fill:"none",stroke:s.color,"stroke-width":2,
       "stroke-linejoin":"round","stroke-linecap":"round"}));
@@ -696,6 +766,166 @@ function drawCompass(deg,rose){
     svg.appendChild(el("circle",{cx:cx,cy:cy,r:3,fill:css("--s2"),stroke:css("--surface"),"stroke-width":2}));
   }
 }
+
+/* ================= 逐筆曲線的時間視窗 =================
+   recent.json 只有 48 小時。要看更長就改讀月檔——它們本來就已經發布了，
+   不必為此多推任何東西。月檔的 rain_mm 是「當日累計」，這裡要轉成
+   「每筆增量」才能和 recent.json 的 rain_inc 對齊。
+   長視窗的點數會爆（30 天 ≈ 8600 點），所以重取樣到約 600 點再畫。   */
+var WIN=48;                 // 小時，或 "all"
+var MONTHS={};              // 月檔快取："2026-08" → rows
+var WINROWS=null;           // 目前視窗的資料（已重取樣）
+var WINFIELDS=null;         // WINROWS 的欄位順序（來源不同會不一樣）
+var WINBUSY=false;
+var RF=["t","temp","rh","dew","pres","wind","gust","dir","rain_inc","rate","solar","uv"];
+var TARGET_POINTS=600;
+
+function parseMonthCsv(text){
+  var lines=text.split("\n");
+  if(!lines.length)return [];
+  var hdr=lines[0].replace(/\r/g,"").split(","),ix={};
+  hdr.forEach(function(h,i){ix[h.trim()]=i;});
+  var out=[],prevRain=null;
+  for(var i=1;i<lines.length;i++){
+    var L=lines[i].replace(/\r/g,"");
+    if(!L)continue;
+    var c=L.split(",");
+    var u=c[ix.observed_at_utc];
+    if(!u)continue;
+    var d=new Date(u);
+    if(isNaN(d.getTime()))continue;
+    // 轉台灣時間的「牆上時刻」字串，格式與 recent.json 的 t 一致
+    var t=new Date(d.getTime()+8*3600*1000).toISOString().slice(0,16);
+    function n(k){
+      var v=(ix[k]===undefined)?"":c[ix[k]];
+      if(v===undefined||v===""||v==="缺測")return null;
+      var f=parseFloat(v);return isNaN(f)?null:f;
+    }
+    var cum=n("rain_mm"),inc=0;
+    if(cum!==null){
+      inc=(prevRain===null)?0:((cum>=prevRain)?(cum-prevRain):cum);
+      prevRain=cum;
+    }
+    out.push([t,n("temp_c"),n("humidity_pct"),n("dew_point_c"),n("pressure_hpa"),
+              n("wind_speed_ms"),n("wind_gust_ms"),n("wind_dir_deg"),
+              Math.round(inc*10)/10,n("rain_rate_mmhr"),n("solar_wm2"),n("uv_index")]);
+  }
+  return out;
+}
+
+function monthKeysBetween(fromISO,toISO){
+  var a=fromISO.slice(0,7),b=toISO.slice(0,7),keys=[],y=+a.slice(0,4),m=+a.slice(5,7);
+  for(var g=0;g<60;g++){
+    var k=y+"-"+(m<10?"0":"")+m;
+    keys.push(k);
+    if(k===b)break;
+    m++;if(m>12){m=1;y++;}
+  }
+  return keys;
+}
+
+function fetchMonth(k){
+  if(MONTHS[k])return Promise.resolve(MONTHS[k]);
+  return fetch(BASE+"month-"+k+".csv?t="+Math.floor(Date.now()/600000),{cache:"no-store"})
+    .then(function(r){return r.ok?r.text():"";})
+    .then(function(txt){MONTHS[k]=txt?parseMonthCsv(txt):[];return MONTHS[k];})
+    .catch(function(){MONTHS[k]=[];return MONTHS[k];});
+}
+
+/* 重取樣：把 rows 併成至多 targetN 個桶。
+   各欄位的併法不同——雨量要「加總」，陣風要「取最大」，
+   風向是角度不能直接平均（0° 與 350° 的平均不是 175°），要用向量平均。 */
+function resample(rows,targetN){
+  if(rows.length<=targetN)return rows;
+  var step=Math.ceil(rows.length/targetN),out=[];
+  for(var i=0;i<rows.length;i+=step){
+    var b=rows.slice(i,i+step),o=new Array(RF.length);
+    o[0]=b[0][0];
+    function agg(idx,how){
+      var v=[];
+      b.forEach(function(r){if(r[idx]!==null&&r[idx]!==undefined)v.push(r[idx]);});
+      if(!v.length)return null;
+      if(how==="sum")return Math.round(v.reduce(function(a,c){return a+c;},0)*10)/10;
+      if(how==="max")return Math.max.apply(null,v);
+      return Math.round(v.reduce(function(a,c){return a+c;},0)/v.length*10)/10;
+    }
+    o[1]=agg(1);o[2]=agg(2);o[3]=agg(3);o[4]=agg(4);
+    o[5]=agg(5);o[6]=agg(6,"max");
+    var sx=0,sy=0,nd=0;
+    b.forEach(function(r){
+      if(r[7]===null||r[7]===undefined)return;
+      var a=r[7]*Math.PI/180;sx+=Math.sin(a);sy+=Math.cos(a);nd++;});
+    o[7]=nd?((Math.atan2(sx,sy)*180/Math.PI+360)%360):null;
+    o[8]=agg(8,"sum");o[9]=agg(9,"max");o[10]=agg(10);o[11]=agg(11);
+    out.push(o);
+  }
+  return out;
+}
+
+function winLabel(){
+  if(WIN==="all")return "全部紀錄";
+  return (WIN<48)?(WIN+" 小時"):((WIN===48)?"48 小時":(WIN/24)+" 天");
+}
+
+function buildWindow(){
+  var stat=document.getElementById("winstat");
+  var host=document.getElementById("charts");
+  document.querySelectorAll("#winbar .rb").forEach(function(b){
+    b.setAttribute("aria-pressed",String(b.getAttribute("data-w"))===String(WIN)?"true":"false");});
+
+  // 48 小時以內直接用 recent.json：它最新鮮，也不必再抓月檔
+  if(WIN!=="all"&&WIN<=48&&RECENT&&RECENT.rows&&RECENT.rows.length){
+    var last=RECENT.rows[RECENT.rows.length-1][0];
+    var cut=new Date(new Date(last+":00").getTime()-WIN*3600*1000);
+    WINROWS=RECENT.rows.filter(function(r){return new Date(r[0]+":00")>=cut;});
+    WINFIELDS=RECENT.fields;
+    stat.className="winstat";
+    stat.textContent=WINROWS.length+" 筆 · 每 5 分鐘";
+    host.classList.remove("busy");
+    drawIntraday();
+    return Promise.resolve();
+  }
+
+  if(!DAILY||!DAILY.days||!DAILY.days.length)return Promise.resolve();
+  var lastDay=DAILY.days[DAILY.days.length-1].d,firstDay=DAILY.days[0].d;
+  var from=(WIN==="all")?firstDay
+    :fmtD(new Date(parseD(lastDay).getTime()-(WIN/24)*86400000));
+  if(from<firstDay)from=firstDay;
+
+  WINBUSY=true;
+  host.classList.add("busy");
+  stat.className="winstat load";
+  stat.textContent="載入中…";
+  var keys=monthKeysBetween(from,lastDay);
+  return Promise.all(keys.map(fetchMonth)).then(function(sets){
+    var all=[];
+    sets.forEach(function(s){all=all.concat(s);});
+    all.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});
+    var cutStr=from+"T00:00";
+    all=all.filter(function(r){return r[0]>=cutStr;});
+    var raw=all.length;
+    WINROWS=resample(all,TARGET_POINTS);
+    WINFIELDS=RF;
+    WINBUSY=false;
+    host.classList.remove("busy");
+    stat.className="winstat";
+    stat.textContent=raw?(raw.toLocaleString()+" 筆"+
+      (WINROWS.length<raw?("　→ 併成 "+WINROWS.length+" 點顯示"):"")):"沒有資料";
+    drawIntraday();
+  });
+}
+
+document.querySelectorAll("#winbar .rb").forEach(function(b){
+  b.addEventListener("click",function(){
+    if(WINBUSY)return;
+    var v=b.getAttribute("data-w");
+    WIN=(v==="all")?"all":parseInt(v,10);
+    try{localStorage.setItem("wxWin",v);}catch(e){}
+    buildWindow();
+  });
+});
+try{var sw=localStorage.getItem("wxWin");
+  if(sw)WIN=(sw==="all")?"all":parseInt(sw,10);}catch(e){}
 
 /* ---------- 日期區間 ----------
    同時控制「每日回顧」的兩張圖、資料表，以及每個要素詳細頁裡的每日歷史。 */
@@ -989,57 +1219,82 @@ function uvWord(u){
 }
 
 function drawAll(){
-  if(RECENT&&RECENT.rows&&RECENT.rows.length){
-    var R=RECENT.rows,idx={};RECENT.fields.forEach(function(f,i){idx[f]=i;});
-    var rows=R.map(function(r){return {x:r[idx.t],r:r};});
-    function mk(keys){return rows.map(function(o){
-      return {x:o.x,vals:keys.map(function(k){var v=o.r[idx[k]];return (v===null||v===undefined)?null:v;})};});}
-    var opt={xfmt:function(s){return hhmm(s);},tipTitle:function(s){return mdhm(s);}};
-
-    lineChart(document.getElementById("cTemp"),mk(["temp","dew"]),
-      [{color:css("--s2"),label:"氣溫"},{color:css("--s1"),label:"露點"}],
-      Object.assign({unit:"°C",aria:"近48小時氣溫與露點"},opt));
-    lineChart(document.getElementById("cHum"),mk(["rh"]),[{color:css("--s1"),label:"濕度"}],
-      Object.assign({unit:"%",dec:0,area:true,aria:"近48小時相對濕度"},opt));
-    lineChart(document.getElementById("cPres"),mk(["pres"]),[{color:css("--s1"),label:"氣壓"}],
-      Object.assign({unit:"hPa",aria:"近48小時氣壓"},opt));
-    lineChart(document.getElementById("cWind"),mk(["wind","gust"]),
-      [{color:css("--s1"),label:"風速"},{color:css("--s2"),label:"陣風"}],
-      Object.assign({unit:"m/s",zero:true,aria:"近48小時風速與陣風"},opt));
-    lineChart(document.getElementById("cSolar"),mk(["solar"]),[{color:css("--s4"),label:"日照"}],
-      Object.assign({unit:"W/m²",dec:0,zero:true,area:true,aria:"近48小時日照強度"},opt));
-    lineChart(document.getElementById("cUV"),mk(["uv"]),[{color:css("--s3"),label:"UV"}],
-      Object.assign({unit:"",zero:true,area:true,aria:"近48小時紫外線指數"},opt));
-
-    var buckets={},order=[];
-    R.forEach(function(r){
-      var key=r[idx.t].slice(0,13);
-      if(!(key in buckets)){buckets[key]=0;order.push(key);}
-      var v=r[idx.rain_inc];if(v)buckets[key]+=v;
-    });
-    barChart(document.getElementById("cRain"),order.map(function(k){
-      return {v:Math.round(buckets[k]*10)/10,tick:k.split("T")[1]+"時",
-        title:mdhm(k+":00").replace(" ","  ")+"–"+(+k.split("T")[1]+1)+":00",
-        aria:k+" 時 "+buckets[k].toFixed(1)+" 毫米"};}),
-      {color:css("--s1"),unit:"mm",floor:1,aria:"近48小時每小時雨量"});
-
-    var rose=null;
-    if("dir" in idx){
-      rose=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
-      R.forEach(function(r){
-        var dg=r[idx.dir],sp=r[idx.wind];
-        if(dg===null||dg===undefined||dg>360)return;
-        if(!sp)return;                       // 無風時的風向沒有意義
-        rose[Math.round((dg%360)/22.5)%16]++;
-      });
-      if(!rose.some(function(c){return c>0;}))rose=null;
-    }
-    var ld=(LATEST&&LATEST.wind_dir_deg!==null&&LATEST.wind_dir_deg!==undefined)?LATEST.wind_dir_deg:null;
-    drawCompass(ld,rose);
-  }
-
+  drawIntraday();
   drawDaily();
   renderTable();
+}
+
+function drawIntraday(){
+  var R=WINROWS;
+  if((!R||!R.length)&&RECENT&&RECENT.rows){R=RECENT.rows;WINFIELDS=RECENT.fields;}
+  if(!R||!R.length)return;
+  var idx={};(WINFIELDS||RF).forEach(function(f,i){idx[f]=i;});
+
+  var span=(R.length>1)?
+    (new Date(R[R.length-1][idx.t]+":00")-new Date(R[0][idx.t]+":00"))/3600000:0;
+  document.getElementById("intradaySec").textContent="逐筆變化 — "+winLabel();
+  // X 軸標籤依跨度換寫法。中等跨度只印日期會出現「9/2 9/2 9/2」這種
+  // 重複又讀不出資訊的軸；只印時分又看不出跨了幾天，所以中間帶要日期＋小時。
+  var xf=(span<=36)?function(s){return hhmm(s);}
+        :(span<=192)?function(s){return (+s.slice(5,7))+"/"+(+s.slice(8,10))+" "+s.slice(11,13);}
+        :function(s){return (+s.slice(5,7))+"/"+(+s.slice(8,10));};
+
+  var rows=R.map(function(r){return {x:r[idx.t],r:r};});
+  function mk(keys){return rows.map(function(o){
+    return {x:o.x,vals:keys.map(function(k){
+      var v=(idx[k]===undefined)?null:o.r[idx[k]];
+      return (v===null||v===undefined)?null:v;})};});}
+  var opt={xfmt:xf,tipTitle:function(s){return mdhm(s);}};
+  var W=winLabel();
+
+  lineChart(document.getElementById("cTemp"),mk(["temp","dew"]),
+    [{color:css("--s2"),label:"氣溫"},{color:css("--s1"),label:"露點"}],
+    Object.assign({unit:"°C",aria:W+"氣溫與露點"},opt));
+  lineChart(document.getElementById("cHum"),mk(["rh"]),[{color:css("--s1"),label:"濕度"}],
+    Object.assign({unit:"%",dec:0,area:true,aria:W+"相對濕度"},opt));
+  lineChart(document.getElementById("cPres"),mk(["pres"]),[{color:css("--s1"),label:"氣壓"}],
+    Object.assign({unit:"hPa",aria:W+"氣壓"},opt));
+  lineChart(document.getElementById("cWind"),mk(["wind","gust"]),
+    [{color:css("--s1"),label:"風速"},{color:css("--s2"),label:"陣風"}],
+    Object.assign({unit:"m/s",zero:true,aria:W+"風速與陣風"},opt));
+  lineChart(document.getElementById("cSolar"),mk(["solar"]),[{color:css("--s4"),label:"日照"}],
+    Object.assign({unit:"W/m²",dec:0,zero:true,area:true,aria:W+"日照強度"},opt));
+  lineChart(document.getElementById("cUV"),mk(["uv"]),[{color:css("--s3"),label:"UV"}],
+    Object.assign({unit:"",zero:true,area:true,aria:W+"紫外線指數"},opt));
+
+  // 雨量：短視窗按小時分桶，長視窗按天——不然 30 天會有 720 根柱子
+  var byDay=span>72;
+  var buckets={},order=[];
+  R.forEach(function(r){
+    var key=byDay?r[idx.t].slice(0,10):r[idx.t].slice(0,13);
+    if(!(key in buckets)){buckets[key]=0;order.push(key);}
+    var v=r[idx.rain_inc];if(v)buckets[key]+=v;
+  });
+  document.querySelector("#cRain").closest(".card").querySelector(".cs").textContent=
+    byDay?"mm · 每日累積":"mm · 每小時累積";
+  barChart(document.getElementById("cRain"),order.map(function(k){
+    var v=Math.round(buckets[k]*10)/10;
+    return {v:v,
+      tick:byDay?((+k.slice(5,7))+"/"+(+k.slice(8,10))):(k.split("T")[1]+"時"),
+      title:byDay?zhDateW(k):(mdhm(k+":00").replace(" ","  ")+"–"+(+k.split("T")[1]+1)+":00"),
+      aria:(byDay?zhDate(k):(k+" 時"))+" "+v.toFixed(1)+" 毫米"};}),
+    {color:css("--s1"),unit:"mm",floor:1,aria:W+"雨量"});
+
+  var rose=null;
+  if(idx.dir!==undefined){
+    rose=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    R.forEach(function(r){
+      var dg=r[idx.dir],sp=r[idx.wind];
+      if(dg===null||dg===undefined||dg>360)return;
+      if(!sp)return;                       // 無風時的風向沒有意義
+      rose[Math.round((dg%360)/22.5)%16]++;
+    });
+    if(!rose.some(function(c){return c>0;}))rose=null;
+  }
+  document.querySelector("#compass").closest(".card").querySelector(".cs").textContent=
+    "目前風向與"+W+"的分布";
+  var ld=(LATEST&&LATEST.wind_dir_deg!==null&&LATEST.wind_dir_deg!==undefined)?LATEST.wind_dir_deg:null;
+  drawCompass(ld,rose);
 }
 
 function dayTick(d){return (+d.split("-")[1])+"/"+(+d.split("-")[2]);}
@@ -1161,35 +1416,41 @@ function openDetail(k,keepScroll){
   var stats=document.getElementById("shStats");stats.textContent="";
   var charts=document.getElementById("shCharts");charts.textContent="";
 
+  // 逐筆圖表跟著上方的時間視窗走，不再寫死 48 小時
+  var SRC=(WINROWS&&WINROWS.length)?WINROWS:((RECENT&&RECENT.rows)||null);
+  var SF=(WINROWS&&WINROWS.length)?(WINFIELDS||RF):((RECENT&&RECENT.fields)||RF);
+  var WL=winLabel();
   var idx=null,vals=null;
-  if(RECENT&&RECENT.rows&&m.rf){
-    idx={};RECENT.fields.forEach(function(f,i){idx[f]=i;});
-    if(m.rf in idx){
-      vals=RECENT.rows.map(function(r){var v=r[idx[m.rf]];return (v===null||v===undefined)?null:v;});
+  if(SRC&&SRC.length&&m.rf){
+    idx={};SF.forEach(function(f,i){idx[f]=i;});
+    if(idx[m.rf]!==undefined){
+      vals=SRC.map(function(r){var v=r[idx[m.rf]];return (v===null||v===undefined)?null:v;});
       var ok=vals.filter(function(v){return v!==null;});
       if(ok.length){
         var mx=Math.max.apply(null,ok),mn=Math.min.apply(null,ok);
         var av=ok.reduce(function(a,b){return a+b;},0)/ok.length;
-        var mxi=vals.indexOf(mx),mni=vals.indexOf(mn);
-        stats.appendChild(statBox("48 小時最高",fmt(mx,m.dec),m.unit));
-        stats.appendChild(statBox("出現時間",mdhm(RECENT.rows[mxi][idx.t]),""));
-        stats.appendChild(statBox("48 小時最低",fmt(mn,m.dec),m.unit));
-        stats.appendChild(statBox("48 小時平均",fmt(av,m.dec),m.unit));
+        var mxi=vals.indexOf(mx);
+        stats.appendChild(statBox(WL+"最高",fmt(mx,m.dec),m.unit));
+        stats.appendChild(statBox("出現時間",mdhm(SRC[mxi][idx.t]),""));
+        stats.appendChild(statBox(WL+"最低",fmt(mn,m.dec),m.unit));
+        stats.appendChild(statBox(WL+"平均",fmt(av,m.dec),m.unit));
       }
     }
   }
 
   if(vals){
-    var cb=chartBox("近 48 小時",m.unit?("單位："+m.unit):"");
+    var cb=chartBox(WL,m.unit?("單位："+m.unit+"　範圍可在上方「逐筆變化」調整"):"範圍可在上方「逐筆變化」調整");
     charts.appendChild(cb.box);
-    var rows=RECENT.rows.map(function(r,i){return {x:r[idx.t],vals:[vals[i]]};});
+    var rows=SRC.map(function(r,i){return {x:r[idx.t],vals:[vals[i]]};});
     lineChart(cb.host,rows,[{color:css("--s1"),label:m.name}],
       {unit:m.unit,dec:m.dec,area:(k!=="dir"),
        zero:(k==="rate"||k==="solar"||k==="uv"||k==="wind"||k==="gust"),
        vfmt:(k==="dir")?function(v){
          return v===null?"—":((dirZh(v)||"")+" "+Math.round(v)+"°");}:null,
-       xfmt:function(s){return hhmm(s);},tipTitle:function(s){return mdhm(s);},
-       aria:m.name+" 近 48 小時"});
+       xfmt:(WIN==="all"||WIN>36)?function(s){return (+s.slice(5,7))+"/"+(+s.slice(8,10));}
+                                 :function(s){return hhmm(s);},
+       tipTitle:function(s){return mdhm(s);},
+       aria:m.name+" "+WL});
   }
 
   if(m.daily&&DAILY&&DAILY.days&&DAILY.days.length){
@@ -1518,7 +1779,9 @@ function loadRest(){
     // 使用者已經挑過區間就別覆蓋掉；只有第一次載入才套預設。
     if(DAILY&&DAILY.days&&DAILY.days.length&&!RANGE.from)applyPreset(RANGE.preset);
     if(DAILY&&DAILY.days&&DAILY.days.length)renderRangeUI();
-    drawAll();
+    drawDaily();
+    renderTable();
+    return buildWindow();   // 逐筆曲線交給視窗邏輯（可能要抓月檔）
   });
 }
 // links.json 與資料不同源：它跟網頁一起放在 main 分支，所以是同源請求。
