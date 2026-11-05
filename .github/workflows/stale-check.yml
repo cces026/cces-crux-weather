@@ -148,8 +148,8 @@ jobs:
           5. `C:\WeatherWeb\davis_weather.log` 有沒有 `stream error`；COM16 被佔？（有人開 WeatherLink 就會搶）
           6. token 過期？看 `wx_publish.log` 有沒有 HTTP 401
 
-          ⏳ **停機超過一天**：console 只存約 17.8 天（10 分鐘一筆 × 2,560 筆），
-          開機後要**盡快**照 SOP E 段把 console 記憶體讀出來，最舊的資料會一小時一小時被蓋掉。
+          ⏳ **停機超過一天**：console 只存 2,560 筆（2026-11-05 起 30 分鐘一筆 ≈ 53 天），
+          開機後要**盡快**照 SOP E 段跑 `console_dump.ps1` 把記憶體讀出來，最舊的資料會一筆一筆被蓋掉。
 
           資料恢復後，下一次排程檢查會自動關閉這張 issue。
           EOF
