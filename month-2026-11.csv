@@ -1,0 +1,2 @@
+observed_at_utc,temp_c,humidity_pct,dew_point_c,pressure_hpa,wind_speed_ms,wind_gust_ms,wind_dir_deg,rain_mm,rain_rate_mmhr,solar_wm2,uv_index
+2026-11-05T02:45:35Z,29.1,75,24.2,1019.4,2.2,,253,0.0,0.0,473,3.3
